@@ -1,0 +1,10 @@
+{
+  "id": "evergreen-ai",
+  "name": "Evergreen AI",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "Transform AI responses into evergreen notes with placeholder links that generate content on-demand",
+  "author": "Your Name",
+  "authorUrl": "",
+  "isDesktopOnly": false
+}

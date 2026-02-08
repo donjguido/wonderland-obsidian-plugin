@@ -1,0 +1,249 @@
+/* Evergreen AI Plugin Styles */
+
+/* Placeholder link styling - unresolved links */
+.internal-link.is-unresolved {
+  border-bottom: 1px dashed var(--text-accent);
+  opacity: 0.85;
+  position: relative;
+}
+
+.internal-link.is-unresolved::after {
+  content: '✨';
+  font-size: 0.7em;
+  margin-left: 3px;
+  opacity: 0.7;
+  vertical-align: super;
+}
+
+.internal-link.is-unresolved:hover {
+  opacity: 1;
+  cursor: pointer;
+}
+
+.internal-link.is-unresolved:hover::after {
+  opacity: 1;
+}
+
+/* Prompt Modal Styles */
+.evergreen-prompt-description {
+  color: var(--text-muted);
+  margin-bottom: 1em;
+}
+
+.evergreen-prompt-input {
+  font-family: var(--font-text);
+  font-size: var(--font-text-size);
+  background-color: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  color: var(--text-normal);
+}
+
+.evergreen-prompt-input:focus {
+  border-color: var(--interactive-accent);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.2);
+}
+
+.evergreen-prompt-input::placeholder {
+  color: var(--text-faint);
+}
+
+.evergreen-button-container button {
+  padding: 0.5em 1em;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* Generation Animation */
+.evergreen-generating {
+  position: relative;
+}
+
+.evergreen-generating::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--interactive-accent),
+    transparent
+  );
+  animation: evergreen-generating-pulse 2s ease-in-out infinite;
+}
+
+@keyframes evergreen-generating-pulse {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Status bar indicator */
+.evergreen-status {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.evergreen-status-icon {
+  animation: evergreen-spin 1s linear infinite;
+}
+
+@keyframes evergreen-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Suggestions sidebar */
+.evergreen-suggestions-container {
+  padding: 1em;
+}
+
+.evergreen-suggestion-item {
+  padding: 0.75em;
+  margin-bottom: 0.5em;
+  background-color: var(--background-secondary);
+  border-radius: 6px;
+  border-left: 3px solid var(--interactive-accent);
+}
+
+.evergreen-suggestion-item:hover {
+  background-color: var(--background-secondary-alt);
+}
+
+.evergreen-suggestion-type {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  margin-bottom: 0.25em;
+}
+
+.evergreen-suggestion-reason {
+  font-size: 0.9em;
+  margin-bottom: 0.5em;
+}
+
+.evergreen-suggestion-action {
+  font-size: 0.85em;
+  color: var(--interactive-accent);
+  cursor: pointer;
+}
+
+.evergreen-suggestion-action:hover {
+  text-decoration: underline;
+}
+
+/* Priority badges */
+.evergreen-priority-high {
+  border-left-color: var(--text-error);
+}
+
+.evergreen-priority-medium {
+  border-left-color: var(--text-warning);
+}
+
+.evergreen-priority-low {
+  border-left-color: var(--text-success);
+}
+
+/* Note metadata styling in reading view */
+.evergreen-metadata {
+  background-color: var(--background-secondary);
+  padding: 0.75em 1em;
+  border-radius: 6px;
+  margin-bottom: 1em;
+  font-size: 0.85em;
+}
+
+.evergreen-metadata-item {
+  display: flex;
+  gap: 0.5em;
+}
+
+.evergreen-metadata-label {
+  color: var(--text-muted);
+  min-width: 80px;
+}
+
+/* Drafting indicator */
+.evergreen-drafting {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.evergreen-drafting::before {
+  content: '✍️ ';
+}
+
+/* Link preview popover enhancements */
+.evergreen-link-preview {
+  max-width: 400px;
+  padding: 1em;
+}
+
+.evergreen-link-preview-placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+  text-align: center;
+  padding: 2em;
+}
+
+.evergreen-link-preview-placeholder::before {
+  content: '✨';
+  display: block;
+  font-size: 2em;
+  margin-bottom: 0.5em;
+}
+
+/* Toast notifications */
+.evergreen-toast {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+}
+
+.evergreen-toast-icon {
+  font-size: 1.2em;
+}
+
+/* Graph view node styling for evergreen notes */
+.graph-view.evergreen .node-circle.evergreen-note {
+  fill: var(--interactive-accent);
+}
+
+/* Settings page enhancements */
+.evergreen-settings-section {
+  margin-top: 2em;
+  padding-top: 1em;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.evergreen-settings-section h2 {
+  margin-bottom: 1em;
+}
+
+/* Keyboard shortcut hints */
+.evergreen-shortcut-hint {
+  font-size: 0.8em;
+  color: var(--text-muted);
+  margin-top: 0.25em;
+}
+
+.evergreen-shortcut-hint kbd {
+  background-color: var(--background-secondary);
+  padding: 0.1em 0.4em;
+  border-radius: 3px;
+  font-family: var(--font-monospace);
+  font-size: 0.9em;
+}
