@@ -73,7 +73,9 @@ GUIDELINES:
 - Keep statements concise but intriguing (under 60 characters)
 
 FORMAT:
-Return ONLY a markdown list where each statement is wrapped in [[double brackets]] to make it a wiki-link:
+Return ONLY the markdown list. Do NOT include any introductory text, primer, or explanation like "Here are X concept statements..." - start directly with the first bullet point.
+
+Each statement must be wrapped in [[double brackets]] to make it a wiki-link:
 - [[The trainability of time perception]]
 - [[How dreams shape memory formation]]
 - [[The reward mechanism behind curiosity]]

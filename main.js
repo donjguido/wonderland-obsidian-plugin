@@ -1186,7 +1186,9 @@ GUIDELINES:
 - Keep statements concise but intriguing (under 60 characters)
 
 FORMAT:
-Return ONLY a markdown list where each statement is wrapped in [[double brackets]] to make it a wiki-link:
+Return ONLY the markdown list. Do NOT include any introductory text, primer, or explanation like "Here are X concept statements..." - start directly with the first bullet point.
+
+Each statement must be wrapped in [[double brackets]] to make it a wiki-link:
 - [[The trainability of time perception]]
 - [[How dreams shape memory formation]]
 - [[The reward mechanism behind curiosity]]
@@ -1483,6 +1485,16 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
       return false;
     return folderSettings.enrichBlacklist.includes(filePath);
   }
+  // Update the last active Wonderland folder based on current file
+  updateLastActiveWonderlandFolder() {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (activeFile) {
+      const wonderlandFolder = this.getWonderlandFolderFor(activeFile.path);
+      if (wonderlandFolder) {
+        this.lastActiveWonderlandFolder = wonderlandFolder;
+      }
+    }
+  }
   async onload() {
     await this.loadSettings();
     this.aiService = new AIService(this.settings);
@@ -1664,38 +1676,45 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
     }, { capture: true });
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", () => {
-        const activeFile = this.app.workspace.getActiveFile();
-        if (activeFile) {
-          const wonderlandFolder = this.getWonderlandFolderFor(activeFile.path);
-          if (wonderlandFolder) {
-            this.lastActiveWonderlandFolder = wonderlandFolder;
-            console.log("Wonderland - Active folder tracked:", wonderlandFolder);
-          }
-        }
+        this.updateLastActiveWonderlandFolder();
+      })
+    );
+    this.registerEvent(
+      this.app.workspace.on("layout-change", () => {
+        this.updateLastActiveWonderlandFolder();
       })
     );
     this.registerEvent(
       this.app.vault.on("create", async (file) => {
         if (file instanceof import_obsidian3.TFile && file.extension === "md") {
           const sourceFolder = this.lastActiveWonderlandFolder;
-          try {
-            const content = await this.app.vault.read(file);
-            if (content.trim() === "" && sourceFolder) {
-              console.log("Wonderland - New empty file created:", file.path, "from Wonderland:", sourceFolder);
-              this.pendingGenerations.set(file.path, sourceFolder);
-            }
-          } catch (e) {
-            setTimeout(async () => {
-              try {
-                const content = await this.app.vault.read(file);
-                if (content.trim() === "" && sourceFolder) {
-                  console.log("Wonderland - New empty file created (delayed):", file.path, "from Wonderland:", sourceFolder);
+          const fileWonderlandFolder = this.getWonderlandFolderFor(file.path);
+          const checkAndTrackFile = async () => {
+            try {
+              const content = await this.app.vault.read(file);
+              const isEmpty = content.trim() === "";
+              if (this.isUntitledNote(file.basename)) {
+                console.log("Wonderland - Untitled note created, skipping tracking");
+                return;
+              }
+              if (isEmpty) {
+                if (fileWonderlandFolder) {
+                  console.log("Wonderland - New empty file created in Wonderland:", file.path);
+                  this.pendingGenerations.set(file.path, fileWonderlandFolder);
+                } else if (sourceFolder) {
+                  console.log("Wonderland - New empty file created outside Wonderland:", file.path, "- will move to:", sourceFolder);
                   this.pendingGenerations.set(file.path, sourceFolder);
                 }
-              } catch (e2) {
               }
-            }, 50);
-          }
+            } catch (e) {
+            }
+          };
+          await checkAndTrackFile();
+          setTimeout(async () => {
+            if (!this.pendingGenerations.has(file.path)) {
+              await checkAndTrackFile();
+            }
+          }, 50);
         }
       })
     );

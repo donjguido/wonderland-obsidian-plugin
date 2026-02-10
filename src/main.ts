@@ -143,6 +143,19 @@ export default class EvergreenAIPlugin extends Plugin {
     return folderSettings.enrichBlacklist.includes(filePath);
   }
 
+  // Update the last active Wonderland folder based on current file
+  updateLastActiveWonderlandFolder(): void {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (activeFile) {
+      const wonderlandFolder = this.getWonderlandFolderFor(activeFile.path);
+      if (wonderlandFolder) {
+        this.lastActiveWonderlandFolder = wonderlandFolder;
+        // Only log on change to reduce noise
+        // console.log('Wonderland - Active folder tracked:', wonderlandFolder);
+      }
+    }
+  }
+
   async onload() {
     await this.loadSettings();
 
@@ -377,18 +390,18 @@ export default class EvergreenAIPlugin extends Plugin {
     // Track which Wonderland folder is active when user interacts
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', () => {
-        const activeFile = this.app.workspace.getActiveFile();
-        if (activeFile) {
-          const wonderlandFolder = this.getWonderlandFolderFor(activeFile.path);
-          if (wonderlandFolder) {
-            this.lastActiveWonderlandFolder = wonderlandFolder;
-            console.log('Wonderland - Active folder tracked:', wonderlandFolder);
-          }
-        }
+        this.updateLastActiveWonderlandFolder();
       })
     );
 
-    // Register handler for file creation - track files created from link clicks
+    // Also track on layout change (catches quick switcher interactions better)
+    this.registerEvent(
+      this.app.workspace.on('layout-change', () => {
+        this.updateLastActiveWonderlandFolder();
+      })
+    );
+
+    // Register handler for file creation - track files created from link clicks or quick switcher
     // These may be created OUTSIDE the Wonderland folder by Obsidian's default behavior
     this.registerEvent(
       this.app.vault.on('create', async (file) => {
@@ -396,26 +409,47 @@ export default class EvergreenAIPlugin extends Plugin {
           // Check if there's a last active Wonderland folder to associate this with
           const sourceFolder = this.lastActiveWonderlandFolder;
 
-          try {
-            const content = await this.app.vault.read(file);
-            if (content.trim() === '' && sourceFolder) {
-              console.log('Wonderland - New empty file created:', file.path, 'from Wonderland:', sourceFolder);
-              // Track this file with its source Wonderland folder
-              this.pendingGenerations.set(file.path, sourceFolder);
-            }
-          } catch (e) {
-            setTimeout(async () => {
-              try {
-                const content = await this.app.vault.read(file);
-                if (content.trim() === '' && sourceFolder) {
-                  console.log('Wonderland - New empty file created (delayed):', file.path, 'from Wonderland:', sourceFolder);
+          // Also check if the file is already in a Wonderland folder
+          const fileWonderlandFolder = this.getWonderlandFolderFor(file.path);
+
+          const checkAndTrackFile = async () => {
+            try {
+              const content = await this.app.vault.read(file);
+              const isEmpty = content.trim() === '';
+
+              // Skip if it's an untitled note
+              if (this.isUntitledNote(file.basename)) {
+                console.log('Wonderland - Untitled note created, skipping tracking');
+                return;
+              }
+
+              if (isEmpty) {
+                // If file is already in a Wonderland folder, track it with that folder
+                if (fileWonderlandFolder) {
+                  console.log('Wonderland - New empty file created in Wonderland:', file.path);
+                  this.pendingGenerations.set(file.path, fileWonderlandFolder);
+                }
+                // If file is outside Wonderland but we have a last active folder, track for move
+                else if (sourceFolder) {
+                  console.log('Wonderland - New empty file created outside Wonderland:', file.path, '- will move to:', sourceFolder);
                   this.pendingGenerations.set(file.path, sourceFolder);
                 }
-              } catch (e2) {
-                // File might have been deleted or moved
               }
-            }, 50);
-          }
+            } catch {
+              // File not ready yet, will retry in delayed handler
+            }
+          };
+
+          // Try immediately
+          await checkAndTrackFile();
+
+          // Also try with a small delay (for when file isn't ready immediately)
+          setTimeout(async () => {
+            // Only track if not already tracked
+            if (!this.pendingGenerations.has(file.path)) {
+              await checkAndTrackFile();
+            }
+          }, 50);
         }
       })
     );
