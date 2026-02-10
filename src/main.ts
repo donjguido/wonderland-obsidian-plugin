@@ -23,6 +23,7 @@ import {
   CLASSIFY_NOTE_PROMPT,
   RABBIT_HOLES_INDEX_PROMPT,
   CUSTOM_INSTRUCTIONS_WRAPPER,
+  GLOBAL_INSTRUCTIONS_WRAPPER,
   FOLDER_GOAL_WRAPPER,
   EXTERNAL_LINKS_PROMPT,
   PERSONALIZED_SUGGESTIONS_PROMPT,
@@ -127,6 +128,19 @@ export default class EvergreenAIPlugin extends Plugin {
 
     const parent = activeFile.parent;
     return parent?.path || null;
+  }
+
+  // Get the top-level folder (first folder after vault root) for a file path
+  getTopLevelFolder(filePath: string): string | null {
+    const parts = filePath.split('/');
+    if (parts.length < 2) return null; // File is at root
+    return parts[0]; // Return the first folder
+  }
+
+  // Check if a note is blacklisted from enrichment
+  isNoteBlacklisted(filePath: string, folderSettings: WonderlandFolderSettings): boolean {
+    if (!folderSettings.enrichBlacklist) return false;
+    return folderSettings.enrichBlacklist.includes(filePath);
   }
 
   async onload() {
@@ -245,6 +259,113 @@ export default class EvergreenAIPlugin extends Plugin {
         }
 
         await this.generateRabbitHolesIndex(folderSettings);
+      },
+    });
+
+    // Add command to make current folder a Wonderland
+    this.addCommand({
+      id: 'make-folder-wonderland',
+      name: 'Make current folder a Wonderland',
+      callback: async () => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (!activeFile) {
+          new Notice('No active note - open a note first');
+          return;
+        }
+
+        const currentFolder = activeFile.parent;
+        if (!currentFolder) {
+          new Notice('Note is at vault root - cannot make root a Wonderland');
+          return;
+        }
+
+        // Check if already a Wonderland
+        if (this.isInWonderland(activeFile.path)) {
+          new Notice(`This folder is already part of Wonderland: ${this.getWonderlandFolderFor(activeFile.path)}`);
+          return;
+        }
+
+        // Open setup modal
+        new NewWonderlandSetupModal(this.app, this, currentFolder.path, async (settings) => {
+          this.settings.wonderlandFolders.push(settings);
+          this.settings.selectedFolderIndex = this.settings.wonderlandFolders.length - 1;
+          await this.saveSettings();
+          new Notice(`${currentFolder.path} is now a Wonderland!`);
+        }).open();
+      },
+    });
+
+    // Add command to make top-level folder (after root) a Wonderland
+    this.addCommand({
+      id: 'make-root-folder-wonderland',
+      name: 'Make top-level folder a Wonderland',
+      callback: async () => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (!activeFile) {
+          new Notice('No active note - open a note first');
+          return;
+        }
+
+        // Get the top-level folder (first folder after vault root)
+        const topLevelFolder = this.getTopLevelFolder(activeFile.path);
+        if (!topLevelFolder) {
+          new Notice('Note is at vault root - cannot determine top-level folder');
+          return;
+        }
+
+        // Check if already a Wonderland
+        const existingWonderland = this.settings.wonderlandFolders.find(f => f.path === topLevelFolder);
+        if (existingWonderland) {
+          new Notice(`${topLevelFolder} is already a Wonderland`);
+          return;
+        }
+
+        // Open setup modal
+        new NewWonderlandSetupModal(this.app, this, topLevelFolder, async (settings) => {
+          this.settings.wonderlandFolders.push(settings);
+          this.settings.selectedFolderIndex = this.settings.wonderlandFolders.length - 1;
+          await this.saveSettings();
+          new Notice(`${topLevelFolder} is now a Wonderland!`);
+        }).open();
+      },
+    });
+
+    // Add command to toggle blacklist for current note
+    this.addCommand({
+      id: 'toggle-enrich-blacklist',
+      name: 'Toggle enrichment blacklist for current note',
+      callback: async () => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (!activeFile) {
+          new Notice('No active note');
+          return;
+        }
+
+        const folderSettings = this.getWonderlandSettingsFor(activeFile.path);
+        if (!folderSettings) {
+          new Notice('This note is not in a Wonderland folder');
+          return;
+        }
+
+        // Initialize blacklist if needed
+        if (!folderSettings.enrichBlacklist) {
+          folderSettings.enrichBlacklist = [];
+        }
+
+        const notePath = activeFile.path;
+        const isBlacklisted = folderSettings.enrichBlacklist.includes(notePath);
+
+        if (isBlacklisted) {
+          // Remove from blacklist
+          folderSettings.enrichBlacklist = folderSettings.enrichBlacklist.filter(p => p !== notePath);
+          await this.saveSettings();
+          new Notice(`"${activeFile.basename}" removed from enrichment blacklist`);
+        } else {
+          // Add to blacklist
+          folderSettings.enrichBlacklist.push(notePath);
+          await this.saveSettings();
+          new Notice(`"${activeFile.basename}" added to enrichment blacklist`);
+        }
       },
     });
 
@@ -447,6 +568,11 @@ export default class EvergreenAIPlugin extends Plugin {
       // Build the system prompt with folder goal
       let systemPrompt = EVERGREEN_NOTE_SYSTEM_PROMPT;
 
+      // Apply global instructions first (if any)
+      if (this.settings.globalInstructions) {
+        systemPrompt = GLOBAL_INSTRUCTIONS_WRAPPER(this.settings.globalInstructions, systemPrompt);
+      }
+
       // Apply folder goal context
       if (folderSettings.folderGoal) {
         systemPrompt = FOLDER_GOAL_WRAPPER(
@@ -456,7 +582,7 @@ export default class EvergreenAIPlugin extends Plugin {
         );
       }
 
-      // Apply custom instructions
+      // Apply custom instructions (folder-specific, override global)
       if (folderSettings.customInstructions) {
         systemPrompt = CUSTOM_INSTRUCTIONS_WRAPPER(folderSettings.customInstructions, systemPrompt);
       }
@@ -483,6 +609,10 @@ export default class EvergreenAIPlugin extends Plugin {
       if (file instanceof TFile) {
         await this.app.vault.modify(file, formattedContent);
       }
+
+      // Increment counters
+      await this.incrementNoteCounterAndCheckReorganize(folderSettings);
+      await this.incrementEnrichCounterAndCheck(folderSettings);
 
       notice.hide();
       new Notice(`Created: ${title}`);
@@ -677,6 +807,13 @@ export default class EvergreenAIPlugin extends Plugin {
   async enrichNoteWithKnowledge(file: TFile, folderSettings: WonderlandFolderSettings, silent: boolean = false): Promise<boolean> {
     if (!this.validateSettings()) return false;
 
+    // Check if note is blacklisted
+    if (this.isNoteBlacklisted(file.path, folderSettings)) {
+      console.log(`Wonderland - Skipping enrichment for blacklisted note: ${file.basename}`);
+      if (!silent) new Notice(`"${file.basename}" is blacklisted from enrichment`);
+      return false;
+    }
+
     const title = file.basename;
     const notice = silent ? null : new Notice(`Enriching ${title} with Wonderland knowledge...`, 0);
 
@@ -731,7 +868,9 @@ export default class EvergreenAIPlugin extends Plugin {
 
     try {
       const allFolderFiles = this.app.vault.getMarkdownFiles()
-        .filter(f => f.path.startsWith(folderSettings.path + '/') || f.path === folderSettings.path);
+        .filter(f => f.path.startsWith(folderSettings.path + '/') || f.path === folderSettings.path)
+        // Filter out blacklisted notes
+        .filter(f => !this.isNoteBlacklisted(f.path, folderSettings));
 
       const filesToUpdate = allFolderFiles.slice(0, 10);
 
@@ -740,6 +879,10 @@ export default class EvergreenAIPlugin extends Plugin {
         if (updated) updatedCount++;
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
+
+      // Reset enrichment counter after batch enrichment
+      folderSettings.notesSinceLastEnrich = 0;
+      await this.saveSettings();
 
       if (notice) notice.hide();
       if (!silent) new Notice(`Updated ${updatedCount} notes in ${folderSettings.path}`);
@@ -886,6 +1029,21 @@ export default class EvergreenAIPlugin extends Plugin {
     }
   }
 
+  // Increment the enrichment counter and trigger enrichment if threshold reached
+  async incrementEnrichCounterAndCheck(folderSettings: WonderlandFolderSettings): Promise<void> {
+    if (!folderSettings.enrichOnNoteCount) return;
+
+    folderSettings.notesSinceLastEnrich = (folderSettings.notesSinceLastEnrich || 0) + 1;
+    await this.saveSettings();
+
+    console.log(`Wonderland - Notes since last enrich: ${folderSettings.notesSinceLastEnrich}/${folderSettings.enrichNoteCountThreshold}`);
+
+    if (folderSettings.notesSinceLastEnrich >= folderSettings.enrichNoteCountThreshold) {
+      console.log('Wonderland - Enrich threshold reached, triggering enrichment');
+      await this.autoUpdateFolderNotes(folderSettings, true);
+    }
+  }
+
   // Generate or update the Rabbit Holes Index showing all unresolved links
   async generateRabbitHolesIndex(folderSettings: WonderlandFolderSettings, silent: boolean = false): Promise<void> {
     const notice = silent ? null : new Notice('Generating Rabbit Holes index...', 0);
@@ -1005,6 +1163,11 @@ ${response.content}
       // Build system prompt with all enhancements
       let systemPrompt = PLACEHOLDER_NOTE_SYSTEM_PROMPT;
 
+      // Apply global instructions first (if any)
+      if (this.settings.globalInstructions) {
+        systemPrompt = GLOBAL_INSTRUCTIONS_WRAPPER(this.settings.globalInstructions, systemPrompt);
+      }
+
       // Apply folder goal context
       if (folderSettings.folderGoal) {
         systemPrompt = FOLDER_GOAL_WRAPPER(
@@ -1014,7 +1177,7 @@ ${response.content}
         );
       }
 
-      // Apply custom instructions if set
+      // Apply custom instructions if set (folder-specific, override global)
       if (folderSettings.customInstructions) {
         systemPrompt = CUSTOM_INSTRUCTIONS_WRAPPER(folderSettings.customInstructions, systemPrompt);
       }
@@ -1049,6 +1212,9 @@ ${response.content}
 
       // Increment note counter and check for reorganization
       await this.incrementNoteCounterAndCheckReorganize(folderSettings);
+
+      // Increment enrichment counter and check if threshold reached
+      await this.incrementEnrichCounterAndCheck(folderSettings);
 
       // Update tunnels document if enabled
       if (folderSettings.autoUpdateRabbitHolesIndex) {

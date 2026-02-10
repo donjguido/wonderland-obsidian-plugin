@@ -197,6 +197,19 @@ ${customInstructions}
 Apply these special instructions while following the base guidelines above.`;
 };
 
+export const GLOBAL_INSTRUCTIONS_WRAPPER = (globalInstructions: string, basePrompt: string): string => {
+  if (!globalInstructions || globalInstructions.trim() === '') {
+    return basePrompt;
+  }
+
+  return `${basePrompt}
+
+GLOBAL INSTRUCTIONS (apply to all Wonderland notes):
+${globalInstructions}
+
+Apply these global instructions while following the base guidelines above.`;
+};
+
 // Folder goal descriptions that affect how AI generates content
 export const FOLDER_GOAL_PROMPTS: Record<string, string> = {
   learn: `LEARNING FOCUS: Generate content optimized for understanding and retention. Include clear explanations, examples, and connections to foundational concepts. Use analogies when helpful. Structure content to build understanding progressively.`,

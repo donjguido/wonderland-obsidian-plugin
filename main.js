@@ -57,6 +57,12 @@ var DEFAULT_FOLDER_SETTINGS = {
   autoUpdateNotes: false,
   autoUpdateMode: "append",
   autoUpdateIntervalMinutes: 60,
+  // Enrichment by note count
+  enrichOnNoteCount: false,
+  enrichNoteCountThreshold: 5,
+  notesSinceLastEnrich: 0,
+  // Enrichment blacklist
+  enrichBlacklist: [],
   enableRabbitHolesIndex: false,
   autoUpdateRabbitHolesIndex: false
 };
@@ -67,6 +73,8 @@ var DEFAULT_SETTINGS = {
   model: "gpt-4o-mini",
   maxTokens: 2e3,
   temperature: 0.7,
+  globalInstructions: "",
+  // Global instructions for all Wonderland folders
   wonderlandFolders: [],
   // Start empty, user picks existing folders
   selectedFolderIndex: 0,
@@ -204,9 +212,26 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
         }
       })
     );
+    containerEl.createEl("h2", { text: "Global Instructions" });
+    containerEl.createEl("p", {
+      text: "Instructions that apply to all Wonderland folders. Folder-specific instructions will be applied after these.",
+      cls: "setting-item-description"
+    });
+    new import_obsidian.Setting(containerEl).setName("Global instructions").setDesc("These instructions will be applied to ALL notes generated in any Wonderland folder").addTextArea(
+      (text) => text.setPlaceholder('e.g., "Always use British English spelling" or "Include practical examples in every note"').setValue(this.plugin.settings.globalInstructions || "").onChange(async (value) => {
+        this.plugin.settings.globalInstructions = value;
+        await this.plugin.saveSettings();
+      })
+    ).then((setting) => {
+      const textarea = setting.controlEl.querySelector("textarea");
+      if (textarea) {
+        textarea.style.width = "100%";
+        textarea.style.minHeight = "80px";
+      }
+    });
     containerEl.createEl("h2", { text: "Wonderland Folders" });
     containerEl.createEl("p", {
-      text: "Select existing folders to become wonderlands of knowledge. Each folder can have its own settings.",
+      text: "Select existing folders or type a name to create new wonderlands of knowledge. Each folder can have its own settings.",
       cls: "setting-item-description"
     });
     this.renderConfiguredFolders(containerEl);
@@ -272,27 +297,52 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
     const allFolders = this.plugin.getAllVaultFolders();
     const configuredPaths = this.plugin.settings.wonderlandFolders.map((f) => f.path);
     const availableFolders = allFolders.filter((f) => !configuredPaths.includes(f));
-    if (availableFolders.length === 0 && allFolders.length > 0) {
-      new import_obsidian.Setting(containerEl).setName("All folders configured").setDesc("All available folders are already Wonderland folders");
-      return;
-    }
-    new import_obsidian.Setting(containerEl).setName("Add Wonderland folder").setDesc("Select an existing folder to become a Wonderland").addDropdown((dropdown) => {
-      dropdown.addOption("", "-- Select a folder --");
-      for (const folder of availableFolders) {
-        dropdown.addOption(folder, folder);
-      }
-      return dropdown.onChange(async (value) => {
-        if (value) {
-          const newFolderSettings = createFolderSettings(value);
-          this.plugin.settings.wonderlandFolders.push(newFolderSettings);
-          this.plugin.settings.selectedFolderIndex = this.plugin.settings.wonderlandFolders.length - 1;
-          await this.plugin.saveSettings();
-          this.display();
+    if (availableFolders.length > 0) {
+      new import_obsidian.Setting(containerEl).setName("Add existing folder").setDesc("Select an existing folder to become a Wonderland").addDropdown((dropdown) => {
+        dropdown.addOption("", "-- Select a folder --");
+        for (const folder of availableFolders) {
+          dropdown.addOption(folder, folder);
         }
+        return dropdown.onChange(async (value) => {
+          if (value) {
+            const newFolderSettings = createFolderSettings(value);
+            this.plugin.settings.wonderlandFolders.push(newFolderSettings);
+            this.plugin.settings.selectedFolderIndex = this.plugin.settings.wonderlandFolders.length - 1;
+            await this.plugin.saveSettings();
+            this.display();
+          }
+        });
       });
-    });
+    }
+    let newFolderName = "";
+    new import_obsidian.Setting(containerEl).setName("Create new Wonderland folder").setDesc("Type a folder name to create a new Wonderland (will be created if it doesn't exist)").addText(
+      (text) => text.setPlaceholder("e.g., Research/AI or Personal Notes").onChange((value) => {
+        newFolderName = value.trim();
+      })
+    ).addButton(
+      (button) => button.setButtonText("Create").setCta().onClick(async () => {
+        if (!newFolderName) {
+          return;
+        }
+        if (configuredPaths.includes(newFolderName)) {
+          return;
+        }
+        try {
+          await this.plugin.ensureFolderExists(newFolderName);
+        } catch (e) {
+          console.error("Failed to create folder:", e);
+          return;
+        }
+        const newFolderSettings = createFolderSettings(newFolderName);
+        this.plugin.settings.wonderlandFolders.push(newFolderSettings);
+        this.plugin.settings.selectedFolderIndex = this.plugin.settings.wonderlandFolders.length - 1;
+        await this.plugin.saveSettings();
+        this.display();
+      })
+    );
   }
   renderFolderSettings(containerEl) {
+    var _a, _b;
     const folderSettings = this.plugin.selectedFolderSettings;
     if (!folderSettings)
       return;
@@ -474,7 +524,7 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
       );
     }
     containerEl.createEl("h3", { text: "Knowledge Enrichment" });
-    new import_obsidian.Setting(containerEl).setName("Auto-update notes").setDesc("Periodically enrich notes with insights from related notes").addToggle(
+    new import_obsidian.Setting(containerEl).setName("Auto-update notes (time-based)").setDesc("Periodically enrich notes with insights from related notes").addToggle(
       (toggle) => toggle.setValue(folderSettings.autoUpdateNotes).onChange(async (value) => {
         folderSettings.autoUpdateNotes = value;
         await this.plugin.saveSettings();
@@ -497,15 +547,70 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
           await this.plugin.saveSettings();
         })
       );
-      new import_obsidian.Setting(containerEl).setName("Enrich all notes now").setDesc("Manually trigger enrichment of all notes in this folder").addButton(
-        (button) => button.setButtonText("Enrich All Notes").onClick(async () => {
-          button.setButtonText("Enriching...");
-          button.setDisabled(true);
-          await this.plugin.autoUpdateFolderNotes(folderSettings);
-          button.setButtonText("Enrich All Notes");
-          button.setDisabled(false);
+    }
+    new import_obsidian.Setting(containerEl).setName("Enrich on note count").setDesc("Automatically enrich notes after a certain number of new notes are created").addToggle(
+      (toggle) => toggle.setValue(folderSettings.enrichOnNoteCount || false).onChange(async (value) => {
+        folderSettings.enrichOnNoteCount = value;
+        await this.plugin.saveSettings();
+        this.display();
+      })
+    );
+    if (folderSettings.enrichOnNoteCount) {
+      new import_obsidian.Setting(containerEl).setName("Enrich note count threshold").setDesc(`Enrich after X new notes (currently ${folderSettings.notesSinceLastEnrich || 0} since last enrichment)`).addSlider(
+        (slider) => slider.setLimits(2, 20, 1).setValue(folderSettings.enrichNoteCountThreshold || 5).setDynamicTooltip().onChange(async (value) => {
+          folderSettings.enrichNoteCountThreshold = value;
+          await this.plugin.saveSettings();
         })
       );
+    }
+    new import_obsidian.Setting(containerEl).setName("Enrich all notes now").setDesc("Manually trigger enrichment of all notes in this folder").addButton(
+      (button) => button.setButtonText("Enrich All Notes").onClick(async () => {
+        button.setButtonText("Enriching...");
+        button.setDisabled(true);
+        await this.plugin.autoUpdateFolderNotes(folderSettings);
+        button.setButtonText("Enrich All Notes");
+        button.setDisabled(false);
+      })
+    );
+    containerEl.createEl("h4", { text: "Enrichment Blacklist" });
+    containerEl.createEl("p", {
+      text: 'Notes on this list will be excluded from automatic enrichment. Use the "Toggle enrichment blacklist" command to add/remove notes.',
+      cls: "setting-item-description"
+    });
+    const blacklistCount = ((_a = folderSettings.enrichBlacklist) == null ? void 0 : _a.length) || 0;
+    if (blacklistCount > 0) {
+      const blacklistContainer = containerEl.createDiv({ cls: "wonderland-blacklist-container" });
+      blacklistContainer.style.cssText = "background: var(--background-secondary); padding: 12px; border-radius: 6px; margin-bottom: 1em;";
+      blacklistContainer.createEl("p", {
+        text: `${blacklistCount} note${blacklistCount > 1 ? "s" : ""} blacklisted:`
+      }).style.marginTop = "0";
+      const blacklistList = blacklistContainer.createEl("ul");
+      blacklistList.style.cssText = "margin: 0.5em 0; padding-left: 1.5em;";
+      for (const notePath of folderSettings.enrichBlacklist) {
+        const item = blacklistList.createEl("li");
+        item.style.cssText = "display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;";
+        const noteBasename = ((_b = notePath.split("/").pop()) == null ? void 0 : _b.replace(".md", "")) || notePath;
+        item.createSpan({ text: noteBasename });
+        const removeBtn = item.createEl("button", { text: "\xD7" });
+        removeBtn.style.cssText = "padding: 0 6px; margin-left: 8px; cursor: pointer;";
+        removeBtn.addEventListener("click", async () => {
+          folderSettings.enrichBlacklist = folderSettings.enrichBlacklist.filter((p) => p !== notePath);
+          await this.plugin.saveSettings();
+          this.display();
+        });
+      }
+      new import_obsidian.Setting(blacklistContainer).setName("Clear blacklist").addButton(
+        (button) => button.setButtonText("Clear All").onClick(async () => {
+          folderSettings.enrichBlacklist = [];
+          await this.plugin.saveSettings();
+          this.display();
+        })
+      );
+    } else {
+      containerEl.createEl("p", {
+        text: 'No notes are currently blacklisted. Open a note and use the "Toggle enrichment blacklist" command to add it.',
+        cls: "setting-item-description"
+      });
     }
     containerEl.createEl("h3", { text: "Rabbit Holes Index" });
     containerEl.createEl("p", {
@@ -1197,6 +1302,17 @@ ${customInstructions}
 
 Apply these special instructions while following the base guidelines above.`;
 };
+var GLOBAL_INSTRUCTIONS_WRAPPER = (globalInstructions, basePrompt) => {
+  if (!globalInstructions || globalInstructions.trim() === "") {
+    return basePrompt;
+  }
+  return `${basePrompt}
+
+GLOBAL INSTRUCTIONS (apply to all Wonderland notes):
+${globalInstructions}
+
+Apply these global instructions while following the base guidelines above.`;
+};
 var FOLDER_GOAL_PROMPTS = {
   learn: `LEARNING FOCUS: Generate content optimized for understanding and retention. Include clear explanations, examples, and connections to foundational concepts. Use analogies when helpful. Structure content to build understanding progressively.`,
   action: `ACTION-ORIENTED FOCUS: Generate practical, actionable content. Include step-by-step guides, checklists, and concrete next steps. Focus on "how to" and "what to do next." Prioritize implementation over theory.`,
@@ -1354,6 +1470,19 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
     const parent = activeFile.parent;
     return (parent == null ? void 0 : parent.path) || null;
   }
+  // Get the top-level folder (first folder after vault root) for a file path
+  getTopLevelFolder(filePath) {
+    const parts = filePath.split("/");
+    if (parts.length < 2)
+      return null;
+    return parts[0];
+  }
+  // Check if a note is blacklisted from enrichment
+  isNoteBlacklisted(filePath, folderSettings) {
+    if (!folderSettings.enrichBlacklist)
+      return false;
+    return folderSettings.enrichBlacklist.includes(filePath);
+  }
   async onload() {
     await this.loadSettings();
     this.aiService = new AIService(this.settings);
@@ -1445,6 +1574,89 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
           return;
         }
         await this.generateRabbitHolesIndex(folderSettings);
+      }
+    });
+    this.addCommand({
+      id: "make-folder-wonderland",
+      name: "Make current folder a Wonderland",
+      callback: async () => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (!activeFile) {
+          new import_obsidian3.Notice("No active note - open a note first");
+          return;
+        }
+        const currentFolder = activeFile.parent;
+        if (!currentFolder) {
+          new import_obsidian3.Notice("Note is at vault root - cannot make root a Wonderland");
+          return;
+        }
+        if (this.isInWonderland(activeFile.path)) {
+          new import_obsidian3.Notice(`This folder is already part of Wonderland: ${this.getWonderlandFolderFor(activeFile.path)}`);
+          return;
+        }
+        new NewWonderlandSetupModal(this.app, this, currentFolder.path, async (settings) => {
+          this.settings.wonderlandFolders.push(settings);
+          this.settings.selectedFolderIndex = this.settings.wonderlandFolders.length - 1;
+          await this.saveSettings();
+          new import_obsidian3.Notice(`${currentFolder.path} is now a Wonderland!`);
+        }).open();
+      }
+    });
+    this.addCommand({
+      id: "make-root-folder-wonderland",
+      name: "Make top-level folder a Wonderland",
+      callback: async () => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (!activeFile) {
+          new import_obsidian3.Notice("No active note - open a note first");
+          return;
+        }
+        const topLevelFolder = this.getTopLevelFolder(activeFile.path);
+        if (!topLevelFolder) {
+          new import_obsidian3.Notice("Note is at vault root - cannot determine top-level folder");
+          return;
+        }
+        const existingWonderland = this.settings.wonderlandFolders.find((f) => f.path === topLevelFolder);
+        if (existingWonderland) {
+          new import_obsidian3.Notice(`${topLevelFolder} is already a Wonderland`);
+          return;
+        }
+        new NewWonderlandSetupModal(this.app, this, topLevelFolder, async (settings) => {
+          this.settings.wonderlandFolders.push(settings);
+          this.settings.selectedFolderIndex = this.settings.wonderlandFolders.length - 1;
+          await this.saveSettings();
+          new import_obsidian3.Notice(`${topLevelFolder} is now a Wonderland!`);
+        }).open();
+      }
+    });
+    this.addCommand({
+      id: "toggle-enrich-blacklist",
+      name: "Toggle enrichment blacklist for current note",
+      callback: async () => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (!activeFile) {
+          new import_obsidian3.Notice("No active note");
+          return;
+        }
+        const folderSettings = this.getWonderlandSettingsFor(activeFile.path);
+        if (!folderSettings) {
+          new import_obsidian3.Notice("This note is not in a Wonderland folder");
+          return;
+        }
+        if (!folderSettings.enrichBlacklist) {
+          folderSettings.enrichBlacklist = [];
+        }
+        const notePath = activeFile.path;
+        const isBlacklisted = folderSettings.enrichBlacklist.includes(notePath);
+        if (isBlacklisted) {
+          folderSettings.enrichBlacklist = folderSettings.enrichBlacklist.filter((p) => p !== notePath);
+          await this.saveSettings();
+          new import_obsidian3.Notice(`"${activeFile.basename}" removed from enrichment blacklist`);
+        } else {
+          folderSettings.enrichBlacklist.push(notePath);
+          await this.saveSettings();
+          new import_obsidian3.Notice(`"${activeFile.basename}" added to enrichment blacklist`);
+        }
       }
     });
     this.registerDomEvent(document, "click", async (evt) => {
@@ -1596,6 +1808,9 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
     try {
       const existingNotes = this.getExistingNoteTitles(folderSettings.path);
       let systemPrompt = EVERGREEN_NOTE_SYSTEM_PROMPT;
+      if (this.settings.globalInstructions) {
+        systemPrompt = GLOBAL_INSTRUCTIONS_WRAPPER(this.settings.globalInstructions, systemPrompt);
+      }
       if (folderSettings.folderGoal) {
         systemPrompt = FOLDER_GOAL_WRAPPER(
           folderSettings.folderGoal,
@@ -1619,6 +1834,8 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
       if (file instanceof import_obsidian3.TFile) {
         await this.app.vault.modify(file, formattedContent);
       }
+      await this.incrementNoteCounterAndCheckReorganize(folderSettings);
+      await this.incrementEnrichCounterAndCheck(folderSettings);
       notice.hide();
       new import_obsidian3.Notice(`Created: ${title}`);
       if (file instanceof import_obsidian3.TFile) {
@@ -1762,6 +1979,12 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
   async enrichNoteWithKnowledge(file, folderSettings, silent = false) {
     if (!this.validateSettings())
       return false;
+    if (this.isNoteBlacklisted(file.path, folderSettings)) {
+      console.log(`Wonderland - Skipping enrichment for blacklisted note: ${file.basename}`);
+      if (!silent)
+        new import_obsidian3.Notice(`"${file.basename}" is blacklisted from enrichment`);
+      return false;
+    }
     const title = file.basename;
     const notice = silent ? null : new import_obsidian3.Notice(`Enriching ${title} with Wonderland knowledge...`, 0);
     try {
@@ -1808,7 +2031,7 @@ ${n.content.substring(0, 500)}...`).join("\n\n");
     const notice = silent ? null : new import_obsidian3.Notice(`Auto-updating notes in ${folderSettings.path}...`, 0);
     let updatedCount = 0;
     try {
-      const allFolderFiles = this.app.vault.getMarkdownFiles().filter((f) => f.path.startsWith(folderSettings.path + "/") || f.path === folderSettings.path);
+      const allFolderFiles = this.app.vault.getMarkdownFiles().filter((f) => f.path.startsWith(folderSettings.path + "/") || f.path === folderSettings.path).filter((f) => !this.isNoteBlacklisted(f.path, folderSettings));
       const filesToUpdate = allFolderFiles.slice(0, 10);
       for (const file of filesToUpdate) {
         const updated = await this.enrichNoteWithKnowledge(file, folderSettings, true);
@@ -1816,6 +2039,8 @@ ${n.content.substring(0, 500)}...`).join("\n\n");
           updatedCount++;
         await new Promise((resolve) => setTimeout(resolve, 1e3));
       }
+      folderSettings.notesSinceLastEnrich = 0;
+      await this.saveSettings();
       if (notice)
         notice.hide();
       if (!silent)
@@ -1946,6 +2171,18 @@ ${n.content.substring(0, 500)}...`).join("\n\n");
       await this.organizeWonderlandFolder(folderSettings, true);
     }
   }
+  // Increment the enrichment counter and trigger enrichment if threshold reached
+  async incrementEnrichCounterAndCheck(folderSettings) {
+    if (!folderSettings.enrichOnNoteCount)
+      return;
+    folderSettings.notesSinceLastEnrich = (folderSettings.notesSinceLastEnrich || 0) + 1;
+    await this.saveSettings();
+    console.log(`Wonderland - Notes since last enrich: ${folderSettings.notesSinceLastEnrich}/${folderSettings.enrichNoteCountThreshold}`);
+    if (folderSettings.notesSinceLastEnrich >= folderSettings.enrichNoteCountThreshold) {
+      console.log("Wonderland - Enrich threshold reached, triggering enrichment");
+      await this.autoUpdateFolderNotes(folderSettings, true);
+    }
+  }
   // Generate or update the Rabbit Holes Index showing all unresolved links
   async generateRabbitHolesIndex(folderSettings, silent = false) {
     const notice = silent ? null : new import_obsidian3.Notice("Generating Rabbit Holes index...", 0);
@@ -2040,6 +2277,9 @@ ${response.content}
         existingNotes
       );
       let systemPrompt = PLACEHOLDER_NOTE_SYSTEM_PROMPT;
+      if (this.settings.globalInstructions) {
+        systemPrompt = GLOBAL_INSTRUCTIONS_WRAPPER(this.settings.globalInstructions, systemPrompt);
+      }
       if (folderSettings.folderGoal) {
         systemPrompt = FOLDER_GOAL_WRAPPER(
           folderSettings.folderGoal,
@@ -2072,6 +2312,7 @@ ${response.content}
         }
       }
       await this.incrementNoteCounterAndCheckReorganize(folderSettings);
+      await this.incrementEnrichCounterAndCheck(folderSettings);
       if (folderSettings.autoUpdateRabbitHolesIndex) {
         await this.generateRabbitHolesIndex(folderSettings, true);
       }

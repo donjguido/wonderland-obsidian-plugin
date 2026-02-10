@@ -176,12 +176,42 @@ export class EvergreenAISettingTab extends PluginSettingTab {
       );
 
     // ============================================
+    // GLOBAL INSTRUCTIONS SECTION
+    // ============================================
+    containerEl.createEl('h2', { text: 'Global Instructions' });
+
+    containerEl.createEl('p', {
+      text: 'Instructions that apply to all Wonderland folders. Folder-specific instructions will be applied after these.',
+      cls: 'setting-item-description',
+    });
+
+    new Setting(containerEl)
+      .setName('Global instructions')
+      .setDesc('These instructions will be applied to ALL notes generated in any Wonderland folder')
+      .addTextArea((text) =>
+        text
+          .setPlaceholder('e.g., "Always use British English spelling" or "Include practical examples in every note"')
+          .setValue(this.plugin.settings.globalInstructions || '')
+          .onChange(async (value) => {
+            this.plugin.settings.globalInstructions = value;
+            await this.plugin.saveSettings();
+          })
+      )
+      .then((setting) => {
+        const textarea = setting.controlEl.querySelector('textarea');
+        if (textarea) {
+          textarea.style.width = '100%';
+          textarea.style.minHeight = '80px';
+        }
+      });
+
+    // ============================================
     // WONDERLAND FOLDERS SECTION
     // ============================================
     containerEl.createEl('h2', { text: 'Wonderland Folders' });
 
     containerEl.createEl('p', {
-      text: 'Select existing folders to become wonderlands of knowledge. Each folder can have its own settings.',
+      text: 'Select existing folders or type a name to create new wonderlands of knowledge. Each folder can have its own settings.',
       cls: 'setting-item-description',
     });
 
@@ -271,32 +301,71 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     const configuredPaths = this.plugin.settings.wonderlandFolders.map(f => f.path);
     const availableFolders = allFolders.filter(f => !configuredPaths.includes(f));
 
-    if (availableFolders.length === 0 && allFolders.length > 0) {
+    // Dropdown for existing folders
+    if (availableFolders.length > 0) {
       new Setting(containerEl)
-        .setName('All folders configured')
-        .setDesc('All available folders are already Wonderland folders');
-      return;
+        .setName('Add existing folder')
+        .setDesc('Select an existing folder to become a Wonderland')
+        .addDropdown((dropdown) => {
+          dropdown.addOption('', '-- Select a folder --');
+          for (const folder of availableFolders) {
+            dropdown.addOption(folder, folder);
+          }
+          return dropdown.onChange(async (value) => {
+            if (value) {
+              // Add new folder with default settings
+              const newFolderSettings = createFolderSettings(value);
+              this.plugin.settings.wonderlandFolders.push(newFolderSettings);
+              this.plugin.settings.selectedFolderIndex = this.plugin.settings.wonderlandFolders.length - 1;
+              await this.plugin.saveSettings();
+              this.display();
+            }
+          });
+        });
     }
 
+    // Text input for creating new folders by name
+    let newFolderName = '';
     new Setting(containerEl)
-      .setName('Add Wonderland folder')
-      .setDesc('Select an existing folder to become a Wonderland')
-      .addDropdown((dropdown) => {
-        dropdown.addOption('', '-- Select a folder --');
-        for (const folder of availableFolders) {
-          dropdown.addOption(folder, folder);
-        }
-        return dropdown.onChange(async (value) => {
-          if (value) {
+      .setName('Create new Wonderland folder')
+      .setDesc('Type a folder name to create a new Wonderland (will be created if it doesn\'t exist)')
+      .addText((text) =>
+        text
+          .setPlaceholder('e.g., Research/AI or Personal Notes')
+          .onChange((value) => {
+            newFolderName = value.trim();
+          })
+      )
+      .addButton((button) =>
+        button
+          .setButtonText('Create')
+          .setCta()
+          .onClick(async () => {
+            if (!newFolderName) {
+              return;
+            }
+
+            // Check if folder path is already configured
+            if (configuredPaths.includes(newFolderName)) {
+              return;
+            }
+
+            // Create folder if it doesn't exist
+            try {
+              await this.plugin.ensureFolderExists(newFolderName);
+            } catch (e) {
+              console.error('Failed to create folder:', e);
+              return;
+            }
+
             // Add new folder with default settings
-            const newFolderSettings = createFolderSettings(value);
+            const newFolderSettings = createFolderSettings(newFolderName);
             this.plugin.settings.wonderlandFolders.push(newFolderSettings);
             this.plugin.settings.selectedFolderIndex = this.plugin.settings.wonderlandFolders.length - 1;
             await this.plugin.saveSettings();
             this.display();
-          }
-        });
-      });
+          })
+      );
   }
 
   renderFolderSettings(containerEl: HTMLElement): void {
@@ -636,7 +705,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     containerEl.createEl('h3', { text: 'Knowledge Enrichment' });
 
     new Setting(containerEl)
-      .setName('Auto-update notes')
+      .setName('Auto-update notes (time-based)')
       .setDesc('Periodically enrich notes with insights from related notes')
       .addToggle((toggle) =>
         toggle
@@ -678,21 +747,104 @@ export class EvergreenAISettingTab extends PluginSettingTab {
               await this.plugin.saveSettings();
             })
         );
+    }
 
+    new Setting(containerEl)
+      .setName('Enrich on note count')
+      .setDesc('Automatically enrich notes after a certain number of new notes are created')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(folderSettings.enrichOnNoteCount || false)
+          .onChange(async (value) => {
+            folderSettings.enrichOnNoteCount = value;
+            await this.plugin.saveSettings();
+            this.display();
+          })
+      );
+
+    if (folderSettings.enrichOnNoteCount) {
       new Setting(containerEl)
-        .setName('Enrich all notes now')
-        .setDesc('Manually trigger enrichment of all notes in this folder')
-        .addButton((button) =>
-          button
-            .setButtonText('Enrich All Notes')
-            .onClick(async () => {
-              button.setButtonText('Enriching...');
-              button.setDisabled(true);
-              await this.plugin.autoUpdateFolderNotes(folderSettings);
-              button.setButtonText('Enrich All Notes');
-              button.setDisabled(false);
+        .setName('Enrich note count threshold')
+        .setDesc(`Enrich after X new notes (currently ${folderSettings.notesSinceLastEnrich || 0} since last enrichment)`)
+        .addSlider((slider) =>
+          slider
+            .setLimits(2, 20, 1)
+            .setValue(folderSettings.enrichNoteCountThreshold || 5)
+            .setDynamicTooltip()
+            .onChange(async (value) => {
+              folderSettings.enrichNoteCountThreshold = value;
+              await this.plugin.saveSettings();
             })
         );
+    }
+
+    new Setting(containerEl)
+      .setName('Enrich all notes now')
+      .setDesc('Manually trigger enrichment of all notes in this folder')
+      .addButton((button) =>
+        button
+          .setButtonText('Enrich All Notes')
+          .onClick(async () => {
+            button.setButtonText('Enriching...');
+            button.setDisabled(true);
+            await this.plugin.autoUpdateFolderNotes(folderSettings);
+            button.setButtonText('Enrich All Notes');
+            button.setDisabled(false);
+          })
+      );
+
+    // Blacklist management
+    containerEl.createEl('h4', { text: 'Enrichment Blacklist' });
+
+    containerEl.createEl('p', {
+      text: 'Notes on this list will be excluded from automatic enrichment. Use the "Toggle enrichment blacklist" command to add/remove notes.',
+      cls: 'setting-item-description',
+    });
+
+    const blacklistCount = folderSettings.enrichBlacklist?.length || 0;
+    if (blacklistCount > 0) {
+      const blacklistContainer = containerEl.createDiv({ cls: 'wonderland-blacklist-container' });
+      blacklistContainer.style.cssText = 'background: var(--background-secondary); padding: 12px; border-radius: 6px; margin-bottom: 1em;';
+
+      blacklistContainer.createEl('p', {
+        text: `${blacklistCount} note${blacklistCount > 1 ? 's' : ''} blacklisted:`,
+      }).style.marginTop = '0';
+
+      const blacklistList = blacklistContainer.createEl('ul');
+      blacklistList.style.cssText = 'margin: 0.5em 0; padding-left: 1.5em;';
+
+      for (const notePath of folderSettings.enrichBlacklist) {
+        const item = blacklistList.createEl('li');
+        item.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;';
+
+        const noteBasename = notePath.split('/').pop()?.replace('.md', '') || notePath;
+        item.createSpan({ text: noteBasename });
+
+        const removeBtn = item.createEl('button', { text: '×' });
+        removeBtn.style.cssText = 'padding: 0 6px; margin-left: 8px; cursor: pointer;';
+        removeBtn.addEventListener('click', async () => {
+          folderSettings.enrichBlacklist = folderSettings.enrichBlacklist.filter(p => p !== notePath);
+          await this.plugin.saveSettings();
+          this.display();
+        });
+      }
+
+      new Setting(blacklistContainer)
+        .setName('Clear blacklist')
+        .addButton((button) =>
+          button
+            .setButtonText('Clear All')
+            .onClick(async () => {
+              folderSettings.enrichBlacklist = [];
+              await this.plugin.saveSettings();
+              this.display();
+            })
+        );
+    } else {
+      containerEl.createEl('p', {
+        text: 'No notes are currently blacklisted. Open a note and use the "Toggle enrichment blacklist" command to add it.',
+        cls: 'setting-item-description',
+      });
     }
 
     // Rabbit Holes Index Section

@@ -44,10 +44,18 @@ export interface WonderlandFolderSettings {
   notesSinceLastOrganize: number;  // Counter for notes added since last organize
   autoClassifyNewNotes: boolean;
 
-  // Auto-update
+  // Auto-update/Enrichment
   autoUpdateNotes: boolean;
   autoUpdateMode: 'append' | 'integrate';
   autoUpdateIntervalMinutes: number;
+
+  // Enrichment by note count
+  enrichOnNoteCount: boolean;  // Enrich notes after X new notes are added
+  enrichNoteCountThreshold: number;  // Number of new notes before enriching
+  notesSinceLastEnrich: number;  // Counter for notes added since last enrich
+
+  // Enrichment blacklist - notes to exclude from enrichment
+  enrichBlacklist: string[];  // List of note paths to exclude from enrichment
 
   // Rabbit Holes Index - shows all unresolved links
   enableRabbitHolesIndex: boolean;  // Auto-generate rabbit holes index
@@ -90,6 +98,14 @@ export const DEFAULT_FOLDER_SETTINGS: Omit<WonderlandFolderSettings, 'path'> = {
   autoUpdateMode: 'append',
   autoUpdateIntervalMinutes: 60,
 
+  // Enrichment by note count
+  enrichOnNoteCount: false,
+  enrichNoteCountThreshold: 5,
+  notesSinceLastEnrich: 0,
+
+  // Enrichment blacklist
+  enrichBlacklist: [],
+
   enableRabbitHolesIndex: false,
   autoUpdateRabbitHolesIndex: false,
 };
@@ -103,6 +119,9 @@ export interface EvergreenAISettings {
   model: string;
   maxTokens: number;
   temperature: number;
+
+  // Global instructions that apply to ALL Wonderland folders
+  globalInstructions: string;
 
   // Wonderland folders with their individual settings
   wonderlandFolders: WonderlandFolderSettings[];
@@ -126,6 +145,8 @@ export const DEFAULT_SETTINGS: EvergreenAISettings = {
   model: 'gpt-4o-mini',
   maxTokens: 2000,
   temperature: 0.7,
+
+  globalInstructions: '',  // Global instructions for all Wonderland folders
 
   wonderlandFolders: [],  // Start empty, user picks existing folders
   selectedFolderIndex: 0,
