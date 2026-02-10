@@ -3,9 +3,73 @@ export type AIProvider = 'openai' | 'anthropic' | 'ollama' | 'custom';
 export type TitleStyle = 'concept' | 'question' | 'statement';
 export type SuggestionFrequency = 'always' | 'daily' | 'weekly' | 'manual';
 
-// Plugin settings
+// Per-folder Wonderland settings
+export interface WonderlandFolderSettings {
+  path: string;  // The folder path (e.g., "Research", "Ideas/Projects")
+
+  // Custom instructions for this Wonderland
+  customInstructions: string;  // e.g., "Generate notes as step-by-step cooking guides"
+
+  // Note Generation
+  titleStyle: TitleStyle;
+  includeMetadata: boolean;
+
+  // Placeholder Settings
+  maxPlaceholderLinks: number;
+  autoGeneratePlaceholders: boolean;
+  autoGenerateEmptyNotes: boolean;
+  includeFollowUpQuestions: boolean;
+
+  // Organization
+  autoOrganize: boolean;
+  organizeOnInterval: boolean;
+  organizeIntervalMinutes: number;
+  organizeOnNoteCount: boolean;  // Reorganize every X new notes
+  organizeNoteCountThreshold: number;  // Number of new notes before reorganizing
+  notesSinceLastOrganize: number;  // Counter for notes added since last organize
+  autoClassifyNewNotes: boolean;
+
+  // Auto-update
+  autoUpdateNotes: boolean;
+  autoUpdateMode: 'append' | 'integrate';
+  autoUpdateIntervalMinutes: number;
+
+  // Rabbit Holes Index - shows all unresolved links
+  enableRabbitHolesIndex: boolean;  // Auto-generate rabbit holes index
+  autoUpdateRabbitHolesIndex: boolean;  // Update index on each new note
+}
+
+// Default settings for a new Wonderland folder
+export const DEFAULT_FOLDER_SETTINGS: Omit<WonderlandFolderSettings, 'path'> = {
+  customInstructions: '',
+
+  titleStyle: 'concept',
+  includeMetadata: true,
+
+  maxPlaceholderLinks: 7,
+  autoGeneratePlaceholders: true,
+  autoGenerateEmptyNotes: true,
+  includeFollowUpQuestions: true,
+
+  autoOrganize: false,
+  organizeOnInterval: false,
+  organizeIntervalMinutes: 30,
+  organizeOnNoteCount: false,
+  organizeNoteCountThreshold: 10,
+  notesSinceLastOrganize: 0,
+  autoClassifyNewNotes: true,
+
+  autoUpdateNotes: false,
+  autoUpdateMode: 'append',
+  autoUpdateIntervalMinutes: 60,
+
+  enableRabbitHolesIndex: false,
+  autoUpdateRabbitHolesIndex: false,
+};
+
+// Plugin settings (global + per-folder)
 export interface EvergreenAISettings {
-  // AI Configuration
+  // AI Configuration (global)
   aiProvider: AIProvider;
   apiKey: string;
   apiEndpoint: string;
@@ -13,17 +77,14 @@ export interface EvergreenAISettings {
   maxTokens: number;
   temperature: number;
 
-  // Note Generation
-  noteFolder: string;
-  titleStyle: TitleStyle;
-  includeMetadata: boolean;
-  autoBacklinks: boolean;
+  // Wonderland folders with their individual settings
+  wonderlandFolders: WonderlandFolderSettings[];
 
-  // Placeholder Settings
-  maxPlaceholderLinks: number;
+  // Currently selected folder in settings UI
+  selectedFolderIndex: number;
+
+  // Legacy fields (for backwards compatibility)
   placeholderIndicator: string;
-
-  // Organization
   enableSuggestions: boolean;
   suggestionFrequency: SuggestionFrequency;
 }
@@ -32,21 +93,25 @@ export const DEFAULT_SETTINGS: EvergreenAISettings = {
   aiProvider: 'openai',
   apiKey: '',
   apiEndpoint: '',
-  model: 'gpt-4-turbo-preview',
+  model: 'gpt-4o-mini',
   maxTokens: 2000,
   temperature: 0.7,
 
-  noteFolder: 'Evergreen',
-  titleStyle: 'concept',
-  includeMetadata: true,
-  autoBacklinks: true,
+  wonderlandFolders: [],  // Start empty, user picks existing folders
+  selectedFolderIndex: 0,
 
-  maxPlaceholderLinks: 7,
   placeholderIndicator: '✨',
-
   enableSuggestions: true,
   suggestionFrequency: 'daily',
 };
+
+// Helper to create a new folder settings object
+export function createFolderSettings(path: string): WonderlandFolderSettings {
+  return {
+    path,
+    ...DEFAULT_FOLDER_SETTINGS,
+  };
+}
 
 // Note types
 export interface EvergreenNote {
@@ -124,15 +189,15 @@ export interface ProviderConfig {
 export const PROVIDER_DEFAULTS: Record<AIProvider, Partial<ProviderConfig> & { models: string[] }> = {
   openai: {
     endpoint: 'https://api.openai.com/v1/chat/completions',
-    models: ['gpt-4-turbo-preview', 'gpt-4', 'gpt-3.5-turbo'],
+    models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo'],
   },
   anthropic: {
     endpoint: 'https://api.anthropic.com/v1/messages',
-    models: ['claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307'],
+    models: ['claude-sonnet-4-20250514', 'claude-3-5-sonnet-20241022', 'claude-3-5-haiku-20241022', 'claude-3-haiku-20240307', 'claude-3-opus-20240229'],
   },
   ollama: {
     endpoint: 'http://localhost:11434/api/chat',
-    models: ['llama2', 'mistral', 'mixtral', 'codellama'],
+    models: ['llama3.2', 'llama3.1', 'mistral', 'mixtral', 'codellama'],
   },
   custom: {
     endpoint: '',

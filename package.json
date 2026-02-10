@@ -1,7 +1,7 @@
 {
-  "name": "evergreen-ai-obsidian",
+  "name": "wonderland-obsidian",
   "version": "1.0.0",
-  "description": "AI-powered evergreen note generation for Obsidian",
+  "description": "AI-powered note generation for Obsidian - go down the rabbit hole of knowledge",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
@@ -13,10 +13,26 @@
     "plugin",
     "ai",
     "evergreen-notes",
-    "knowledge-management"
+    "knowledge-management",
+    "note-taking",
+    "linked-notes",
+    "wonderland",
+    "ai-generation"
   ],
-  "author": "",
+  "author": "donjguido",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/donjguido/evergreen-ai-obsidian.git"
+  },
+  "bugs": {
+    "url": "https://github.com/donjguido/evergreen-ai-obsidian/issues"
+  },
+  "homepage": "https://github.com/donjguido/evergreen-ai-obsidian#readme",
+  "funding": {
+    "type": "kofi",
+    "url": "https://ko-fi.com/donjguido"
+  },
   "devDependencies": {
     "@types/node": "^20.11.0",
     "builtin-modules": "^3.3.0",

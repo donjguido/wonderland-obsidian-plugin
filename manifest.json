@@ -1,10 +1,11 @@
 {
-  "id": "evergreen-ai",
-  "name": "Evergreen AI",
+  "id": "wonderland",
+  "name": "Wonderland",
   "version": "1.0.0",
   "minAppVersion": "1.4.0",
-  "description": "Transform AI responses into evergreen notes with placeholder links that generate content on-demand",
-  "author": "Your Name",
-  "authorUrl": "",
+  "description": "Go down the rabbit hole of knowledge. AI generates linked notes that expand on click, letting you explore ideas endlessly. Features auto-organization, knowledge enrichment, and customizable Wonderland folders.",
+  "author": "donjguido",
+  "authorUrl": "https://github.com/donjguido",
+  "fundingUrl": "https://ko-fi.com/donjguido",
   "isDesktopOnly": false
 }

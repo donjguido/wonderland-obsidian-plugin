@@ -1,6 +1,6 @@
-import { App, PluginSettingTab, Setting, TextAreaComponent } from 'obsidian';
+import { App, PluginSettingTab, Setting, TFolder } from 'obsidian';
 import type EvergreenAIPlugin from './main';
-import { AIProvider, PROVIDER_DEFAULTS, TitleStyle, SuggestionFrequency } from './types';
+import { AIProvider, PROVIDER_DEFAULTS, TitleStyle, WonderlandFolderSettings, createFolderSettings } from './types';
 
 export class EvergreenAISettingTab extends PluginSettingTab {
   plugin: EvergreenAIPlugin;
@@ -15,7 +15,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     containerEl.empty();
 
     // Header
-    containerEl.createEl('h1', { text: 'Evergreen AI Settings' });
+    containerEl.createEl('h1', { text: 'Wonderland Settings' });
 
     // AI Provider Section
     containerEl.createEl('h2', { text: 'AI Configuration' });
@@ -34,7 +34,6 @@ export class EvergreenAISettingTab extends PluginSettingTab {
           .setValue(this.plugin.settings.aiProvider)
           .onChange(async (value: AIProvider) => {
             this.plugin.settings.aiProvider = value;
-            // Set default model for provider
             const defaults = PROVIDER_DEFAULTS[value];
             if (defaults.models.length > 0) {
               this.plugin.settings.model = defaults.models[0];
@@ -43,7 +42,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
               this.plugin.settings.apiEndpoint = defaults.endpoint;
             }
             await this.plugin.saveSettings();
-            this.display(); // Refresh to show provider-specific options
+            this.display();
           })
       );
 
@@ -62,7 +61,6 @@ export class EvergreenAISettingTab extends PluginSettingTab {
             })
         )
         .then((setting) => {
-          // Make it a password field
           const inputEl = setting.controlEl.querySelector('input');
           if (inputEl) {
             inputEl.type = 'password';
@@ -149,116 +147,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
           })
       );
 
-    // Note Generation Section
-    containerEl.createEl('h2', { text: 'Note Generation' });
-
-    new Setting(containerEl)
-      .setName('Notes Folder')
-      .setDesc('Where to save generated evergreen notes')
-      .addText((text) =>
-        text
-          .setPlaceholder('Evergreen')
-          .setValue(this.plugin.settings.noteFolder)
-          .onChange(async (value) => {
-            this.plugin.settings.noteFolder = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName('Title Style')
-      .setDesc('How to format note titles')
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOptions({
-            concept: 'Concept (statement form)',
-            question: 'Question (interrogative)',
-            statement: 'Statement (declarative)',
-          })
-          .setValue(this.plugin.settings.titleStyle)
-          .onChange(async (value: TitleStyle) => {
-            this.plugin.settings.titleStyle = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName('Include Metadata')
-      .setDesc('Add YAML frontmatter with generation info')
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.includeMetadata)
-          .onChange(async (value) => {
-            this.plugin.settings.includeMetadata = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName('Auto Backlinks')
-      .setDesc('Automatically maintain a backlinks section in notes')
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.autoBacklinks)
-          .onChange(async (value) => {
-            this.plugin.settings.autoBacklinks = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    // Placeholder Links Section
-    containerEl.createEl('h2', { text: 'Placeholder Links' });
-
-    new Setting(containerEl)
-      .setName('Max Placeholder Links')
-      .setDesc('Maximum concept links to generate per note')
-      .addSlider((slider) =>
-        slider
-          .setLimits(1, 15, 1)
-          .setValue(this.plugin.settings.maxPlaceholderLinks)
-          .setDynamicTooltip()
-          .onChange(async (value) => {
-            this.plugin.settings.maxPlaceholderLinks = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    // Organization Section
-    containerEl.createEl('h2', { text: 'Organization Suggestions' });
-
-    new Setting(containerEl)
-      .setName('Enable Suggestions')
-      .setDesc('Show AI-powered suggestions for organizing your notes')
-      .addToggle((toggle) =>
-        toggle
-          .setValue(this.plugin.settings.enableSuggestions)
-          .onChange(async (value) => {
-            this.plugin.settings.enableSuggestions = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
-    new Setting(containerEl)
-      .setName('Suggestion Frequency')
-      .setDesc('How often to analyze and suggest organization improvements')
-      .addDropdown((dropdown) =>
-        dropdown
-          .addOptions({
-            always: 'On every note change',
-            daily: 'Once per day',
-            weekly: 'Once per week',
-            manual: 'Manual only',
-          })
-          .setValue(this.plugin.settings.suggestionFrequency)
-          .onChange(async (value: SuggestionFrequency) => {
-            this.plugin.settings.suggestionFrequency = value;
-            await this.plugin.saveSettings();
-          })
-      );
-
     // Test Connection Button
-    containerEl.createEl('h2', { text: 'Connection Test' });
-
     new Setting(containerEl)
       .setName('Test AI Connection')
       .setDesc('Verify your API configuration is working')
@@ -283,6 +172,460 @@ export class EvergreenAISettingTab extends PluginSettingTab {
                 button.setDisabled(false);
               }, 3000);
             }
+          })
+      );
+
+    // ============================================
+    // WONDERLAND FOLDERS SECTION
+    // ============================================
+    containerEl.createEl('h2', { text: 'Wonderland Folders' });
+
+    containerEl.createEl('p', {
+      text: 'Select existing folders to become wonderlands of knowledge. Each folder can have its own settings.',
+      cls: 'setting-item-description',
+    });
+
+    // List of configured folders
+    this.renderConfiguredFolders(containerEl);
+
+    // Add new folder picker
+    this.renderFolderPicker(containerEl);
+
+    // ============================================
+    // SELECTED FOLDER SETTINGS
+    // ============================================
+    if (this.plugin.settings.wonderlandFolders.length > 0) {
+      this.renderFolderSettings(containerEl);
+    }
+  }
+
+  renderConfiguredFolders(containerEl: HTMLElement): void {
+    const foldersContainer = containerEl.createDiv({ cls: 'wonderland-folders-list' });
+
+    if (this.plugin.settings.wonderlandFolders.length === 0) {
+      foldersContainer.createEl('p', {
+        text: 'No Wonderland folders configured yet. Add one below.',
+        cls: 'setting-item-description',
+      });
+      return;
+    }
+
+    for (let i = 0; i < this.plugin.settings.wonderlandFolders.length; i++) {
+      const folder = this.plugin.settings.wonderlandFolders[i];
+      const isSelected = i === this.plugin.settings.selectedFolderIndex;
+
+      const folderItem = foldersContainer.createDiv({ cls: 'wonderland-folder-item' });
+      folderItem.style.display = 'flex';
+      folderItem.style.alignItems = 'center';
+      folderItem.style.justifyContent = 'space-between';
+      folderItem.style.padding = '8px 12px';
+      folderItem.style.marginBottom = '4px';
+      folderItem.style.backgroundColor = isSelected ? 'var(--interactive-accent)' : 'var(--background-secondary)';
+      folderItem.style.color = isSelected ? 'var(--text-on-accent)' : 'inherit';
+      folderItem.style.borderRadius = '6px';
+      folderItem.style.cursor = 'pointer';
+
+      const folderInfo = folderItem.createDiv();
+      folderInfo.createSpan({ text: '📁 ' });
+      const folderName = folderInfo.createSpan({ text: folder.path });
+      folderName.style.fontFamily = 'var(--font-monospace)';
+      folderName.style.fontWeight = isSelected ? 'bold' : 'normal';
+
+      if (isSelected) {
+        folderInfo.createSpan({ text: ' (editing)', cls: 'setting-item-description' });
+      }
+
+      // Click to select
+      folderItem.addEventListener('click', async () => {
+        this.plugin.settings.selectedFolderIndex = i;
+        await this.plugin.saveSettings();
+        this.display();
+      });
+
+      // Remove button
+      const removeBtn = folderItem.createEl('button', { text: '×' });
+      removeBtn.style.marginLeft = '8px';
+      removeBtn.style.padding = '2px 8px';
+      removeBtn.style.cursor = 'pointer';
+      removeBtn.style.backgroundColor = 'transparent';
+      removeBtn.style.border = 'none';
+      removeBtn.style.color = isSelected ? 'var(--text-on-accent)' : 'var(--text-muted)';
+      removeBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        this.plugin.settings.wonderlandFolders.splice(i, 1);
+        // Adjust selected index if needed
+        if (this.plugin.settings.selectedFolderIndex >= this.plugin.settings.wonderlandFolders.length) {
+          this.plugin.settings.selectedFolderIndex = Math.max(0, this.plugin.settings.wonderlandFolders.length - 1);
+        }
+        await this.plugin.saveSettings();
+        this.display();
+      });
+    }
+  }
+
+  renderFolderPicker(containerEl: HTMLElement): void {
+    // Get all folders in the vault
+    const allFolders = this.plugin.getAllVaultFolders();
+
+    // Filter out already configured folders
+    const configuredPaths = this.plugin.settings.wonderlandFolders.map(f => f.path);
+    const availableFolders = allFolders.filter(f => !configuredPaths.includes(f));
+
+    if (availableFolders.length === 0 && allFolders.length > 0) {
+      new Setting(containerEl)
+        .setName('All folders configured')
+        .setDesc('All available folders are already Wonderland folders');
+      return;
+    }
+
+    new Setting(containerEl)
+      .setName('Add Wonderland folder')
+      .setDesc('Select an existing folder to become a Wonderland')
+      .addDropdown((dropdown) => {
+        dropdown.addOption('', '-- Select a folder --');
+        for (const folder of availableFolders) {
+          dropdown.addOption(folder, folder);
+        }
+        return dropdown.onChange(async (value) => {
+          if (value) {
+            // Add new folder with default settings
+            const newFolderSettings = createFolderSettings(value);
+            this.plugin.settings.wonderlandFolders.push(newFolderSettings);
+            this.plugin.settings.selectedFolderIndex = this.plugin.settings.wonderlandFolders.length - 1;
+            await this.plugin.saveSettings();
+            this.display();
+          }
+        });
+      });
+  }
+
+  renderFolderSettings(containerEl: HTMLElement): void {
+    const folderSettings = this.plugin.selectedFolderSettings;
+    if (!folderSettings) return;
+
+    containerEl.createEl('h2', { text: `Settings for: ${folderSettings.path}` });
+
+    // Custom Instructions
+    containerEl.createEl('h3', { text: 'Custom Instructions' });
+
+    new Setting(containerEl)
+      .setName('Custom instructions for this Wonderland')
+      .setDesc('Special instructions for how notes should be generated (e.g., "Generate notes as step-by-step cooking guides" or "Write in a formal academic style")')
+      .addTextArea((text) =>
+        text
+          .setPlaceholder('e.g., "Generate notes as step-by-step cooking guides with ingredients lists"')
+          .setValue(folderSettings.customInstructions || '')
+          .onChange(async (value) => {
+            folderSettings.customInstructions = value;
+            await this.plugin.saveSettings();
+          })
+      )
+      .then((setting) => {
+        const textarea = setting.controlEl.querySelector('textarea');
+        if (textarea) {
+          textarea.style.width = '100%';
+          textarea.style.minHeight = '80px';
+        }
+      });
+
+    // Note Generation Settings
+    containerEl.createEl('h3', { text: 'Note Generation' });
+
+    new Setting(containerEl)
+      .setName('Title Style')
+      .setDesc('How to format note titles')
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOptions({
+            concept: 'Concept (statement form)',
+            question: 'Question (interrogative)',
+            statement: 'Statement (declarative)',
+          })
+          .setValue(folderSettings.titleStyle)
+          .onChange(async (value: TitleStyle) => {
+            folderSettings.titleStyle = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Include Metadata')
+      .setDesc('Add YAML frontmatter with generation info')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(folderSettings.includeMetadata)
+          .onChange(async (value) => {
+            folderSettings.includeMetadata = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    // Placeholder Links Section
+    containerEl.createEl('h3', { text: 'Placeholder Links' });
+
+    new Setting(containerEl)
+      .setName('Max Placeholder Links')
+      .setDesc('Maximum concept links to generate per note')
+      .addSlider((slider) =>
+        slider
+          .setLimits(1, 15, 1)
+          .setValue(folderSettings.maxPlaceholderLinks)
+          .setDynamicTooltip()
+          .onChange(async (value) => {
+            folderSettings.maxPlaceholderLinks = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Auto-generate on click')
+      .setDesc('Automatically generate notes when clicking placeholder links')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(folderSettings.autoGeneratePlaceholders)
+          .onChange(async (value) => {
+            folderSettings.autoGeneratePlaceholders = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Auto-explore empty notes')
+      .setDesc('Automatically generate content when opening an empty note from a link')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(folderSettings.autoGenerateEmptyNotes)
+          .onChange(async (value) => {
+            folderSettings.autoGenerateEmptyNotes = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Include rabbit hole questions')
+      .setDesc('Add clickable questions at the end of notes')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(folderSettings.includeFollowUpQuestions)
+          .onChange(async (value) => {
+            folderSettings.includeFollowUpQuestions = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    // Auto-Organization Section
+    containerEl.createEl('h3', { text: 'Auto-Organization' });
+
+    new Setting(containerEl)
+      .setName('Auto-classify new notes')
+      .setDesc('Automatically place new notes into appropriate subfolders')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(folderSettings.autoClassifyNewNotes)
+          .onChange(async (value) => {
+            folderSettings.autoClassifyNewNotes = value;
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Enable auto-organize')
+      .setDesc('Allow AI to organize this folder into intuitive subfolders')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(folderSettings.autoOrganize)
+          .onChange(async (value) => {
+            folderSettings.autoOrganize = value;
+            await this.plugin.saveSettings();
+            this.display();
+          })
+      );
+
+    if (folderSettings.autoOrganize) {
+      new Setting(containerEl)
+        .setName('Organize on interval')
+        .setDesc('Automatically organize periodically')
+        .addToggle((toggle) =>
+          toggle
+            .setValue(folderSettings.organizeOnInterval)
+            .onChange(async (value) => {
+              folderSettings.organizeOnInterval = value;
+              await this.plugin.saveSettings();
+              this.display();
+            })
+        );
+
+      if (folderSettings.organizeOnInterval) {
+        new Setting(containerEl)
+          .setName('Organization interval (minutes)')
+          .setDesc('How often to auto-organize')
+          .addSlider((slider) =>
+            slider
+              .setLimits(5, 120, 5)
+              .setValue(folderSettings.organizeIntervalMinutes)
+              .setDynamicTooltip()
+              .onChange(async (value) => {
+                folderSettings.organizeIntervalMinutes = value;
+                await this.plugin.saveSettings();
+              })
+          );
+      }
+
+      new Setting(containerEl)
+        .setName('Organize on note count')
+        .setDesc('Reorganize after a certain number of new notes are added')
+        .addToggle((toggle) =>
+          toggle
+            .setValue(folderSettings.organizeOnNoteCount)
+            .onChange(async (value) => {
+              folderSettings.organizeOnNoteCount = value;
+              await this.plugin.saveSettings();
+              this.display();
+            })
+        );
+
+      if (folderSettings.organizeOnNoteCount) {
+        new Setting(containerEl)
+          .setName('Note count threshold')
+          .setDesc(`Reorganize every X new notes (currently ${folderSettings.notesSinceLastOrganize || 0} since last organize)`)
+          .addSlider((slider) =>
+            slider
+              .setLimits(3, 50, 1)
+              .setValue(folderSettings.organizeNoteCountThreshold)
+              .setDynamicTooltip()
+              .onChange(async (value) => {
+                folderSettings.organizeNoteCountThreshold = value;
+                await this.plugin.saveSettings();
+              })
+          );
+      }
+
+      new Setting(containerEl)
+        .setName('Organize now')
+        .setDesc('Manually trigger organization')
+        .addButton((button) =>
+          button
+            .setButtonText('Organize Folder')
+            .onClick(async () => {
+              button.setButtonText('Organizing...');
+              button.setDisabled(true);
+              await this.plugin.organizeWonderlandFolder(folderSettings);
+              button.setButtonText('Organize Folder');
+              button.setDisabled(false);
+            })
+        );
+    }
+
+    // Knowledge Enrichment Section
+    containerEl.createEl('h3', { text: 'Knowledge Enrichment' });
+
+    new Setting(containerEl)
+      .setName('Auto-update notes')
+      .setDesc('Periodically enrich notes with insights from related notes')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(folderSettings.autoUpdateNotes)
+          .onChange(async (value) => {
+            folderSettings.autoUpdateNotes = value;
+            await this.plugin.saveSettings();
+            this.display();
+          })
+      );
+
+    if (folderSettings.autoUpdateNotes) {
+      new Setting(containerEl)
+        .setName('Update mode')
+        .setDesc('How to add new insights to notes')
+        .addDropdown((dropdown) =>
+          dropdown
+            .addOptions({
+              append: 'Append (add section at the end)',
+              integrate: 'Integrate (weave into content)',
+            })
+            .setValue(folderSettings.autoUpdateMode)
+            .onChange(async (value: 'append' | 'integrate') => {
+              folderSettings.autoUpdateMode = value;
+              await this.plugin.saveSettings();
+            })
+        );
+
+      new Setting(containerEl)
+        .setName('Update interval (minutes)')
+        .setDesc('How often to check for and add new insights')
+        .addSlider((slider) =>
+          slider
+            .setLimits(15, 240, 15)
+            .setValue(folderSettings.autoUpdateIntervalMinutes)
+            .setDynamicTooltip()
+            .onChange(async (value) => {
+              folderSettings.autoUpdateIntervalMinutes = value;
+              await this.plugin.saveSettings();
+            })
+        );
+
+      new Setting(containerEl)
+        .setName('Enrich all notes now')
+        .setDesc('Manually trigger enrichment of all notes in this folder')
+        .addButton((button) =>
+          button
+            .setButtonText('Enrich All Notes')
+            .onClick(async () => {
+              button.setButtonText('Enriching...');
+              button.setDisabled(true);
+              await this.plugin.autoUpdateFolderNotes(folderSettings);
+              button.setButtonText('Enrich All Notes');
+              button.setDisabled(false);
+            })
+        );
+    }
+
+    // Rabbit Holes Index Section
+    containerEl.createEl('h3', { text: 'Rabbit Holes Index' });
+
+    containerEl.createEl('p', {
+      text: 'The Rabbit Holes Index shows all unresolved links (unexplored paths) in this Wonderland.',
+      cls: 'setting-item-description',
+    });
+
+    new Setting(containerEl)
+      .setName('Enable Rabbit Holes Index')
+      .setDesc('Create and maintain an index of all unresolved links')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(folderSettings.enableRabbitHolesIndex)
+          .onChange(async (value) => {
+            folderSettings.enableRabbitHolesIndex = value;
+            await this.plugin.saveSettings();
+            this.display();
+          })
+      );
+
+    if (folderSettings.enableRabbitHolesIndex) {
+      new Setting(containerEl)
+        .setName('Auto-update Rabbit Holes')
+        .setDesc('Update the index each time a new note is generated')
+        .addToggle((toggle) =>
+          toggle
+            .setValue(folderSettings.autoUpdateRabbitHolesIndex)
+            .onChange(async (value) => {
+              folderSettings.autoUpdateRabbitHolesIndex = value;
+              await this.plugin.saveSettings();
+            })
+        );
+    }
+
+    new Setting(containerEl)
+      .setName('Generate Rabbit Holes Index')
+      .setDesc('Create or update the Rabbit Holes index')
+      .addButton((button) =>
+        button
+          .setButtonText('Generate Index')
+          .onClick(async () => {
+            button.setButtonText('Generating...');
+            button.setDisabled(true);
+            await this.plugin.generateRabbitHolesIndex(folderSettings);
+            button.setButtonText('Generate Index');
+            button.setDisabled(false);
           })
       );
   }

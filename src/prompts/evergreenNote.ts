@@ -62,6 +62,141 @@ Return ONLY the title, nothing else.
 Content:
 `;
 
+export const RABBIT_HOLE_QUESTIONS_PROMPT = `Based on the following note content, generate 3-4 intriguing concept statements that invite the reader to go deeper down the rabbit hole of knowledge.
+
+GUIDELINES:
+- Statements should open new avenues of inquiry, not just rehash the content
+- Frame as declarative concepts to explore: "The relationship between X and Y", "How X influences Y", "The hidden connection of X to Z"
+- Statements should feel exciting to explore - like doorways to new wonderlands
+- Each statement will become a clickable link that generates its own note
+- IMPORTANT: Do NOT use question marks (?) - these will become note titles
+- Keep statements concise but intriguing (under 60 characters)
+
+FORMAT:
+Return ONLY a markdown list where each statement is wrapped in [[double brackets]] to make it a wiki-link:
+- [[The trainability of time perception]]
+- [[How dreams shape memory formation]]
+- [[The reward mechanism behind curiosity]]
+- [[Connections between sleep and creativity]]
+
+Note content:
+`;
+
+export const CLASSIFY_NOTE_PROMPT = `You are classifying a new note into the most appropriate existing subfolder in a knowledge base.
+
+TASK:
+Given a note title and content, and a list of existing subfolders with their contents, determine which subfolder this note belongs in.
+
+GUIDELINES:
+- Choose the subfolder where this note fits most naturally
+- Consider thematic similarity with other notes in each folder
+- If no folder is a good fit, respond with "uncategorized"
+- Only respond with the folder name, nothing else
+
+Existing subfolders and their notes:
+`;
+
+export const ORGANIZE_FOLDER_PROMPT = `You are organizing a knowledge base into intuitive subfolders. Given a list of note titles, suggest how to organize them into thematic subfolders.
+
+GUIDELINES:
+- Create 3-7 subfolders maximum
+- Folder names should be broad themes, not specific topics
+- Each folder should have a clear, intuitive purpose
+- Some notes may fit multiple categories - choose the best fit
+- Use simple, lowercase folder names (e.g., "science", "philosophy", "creativity")
+
+OUTPUT FORMAT:
+Return a JSON object where keys are folder names and values are arrays of note filenames to move there.
+Example:
+{
+  "science": ["How neurons fire.md", "Quantum mechanics basics.md"],
+  "philosophy": ["What is consciousness.md", "Free will debate.md"],
+  "uncategorized": ["Random thought.md"]
+}
+
+Notes to organize:
+`;
+
+export const UPDATE_NOTE_APPEND_PROMPT = `You are adding new insights to an existing note from related notes in the knowledge base.
+
+TASK:
+- Review the current note content and the related notes
+- Create a new "## New discoveries" section with fresh insights
+- Add connections, perspectives, or elaborations from related notes
+- Include [[links]] to source notes and new concepts
+
+GUIDELINES:
+- DO NOT modify or repeat the existing content
+- ONLY output the new section to append (starting with "## New discoveries")
+- Keep it concise (3-5 bullet points or short paragraphs)
+- Link to source notes when referencing their insights
+
+Current note content:
+`;
+
+export const UPDATE_NOTE_INTEGRATE_PROMPT = `You are seamlessly integrating new insights into an existing note from related notes in the knowledge base.
+
+TASK:
+- Review the current note content and the related notes
+- Rewrite the note to naturally incorporate new insights
+- Weave in connections and perspectives from related notes
+- Add [[links]] to related concepts where appropriate
+- Maintain the original voice and structure
+
+GUIDELINES:
+- Preserve all original content and meaning
+- Integrate new insights smoothly into existing paragraphs
+- Add new paragraphs only if needed for substantial additions
+- Link to source notes when adding their insights
+- The result should read as one cohesive, enriched note
+
+Current note content:
+`;
+
+export const RABBIT_HOLES_INDEX_PROMPT = `You are generating a "Rabbit Holes" index that shows all the unexplored paths in a knowledge wonderland.
+
+TASK:
+Create a well-organized document listing all unresolved links (notes waiting to be created).
+
+GUIDELINES:
+- Group related unresolved links into thematic sections
+- Add brief context about what each link might explore
+- Use encouraging language - these are exciting rabbit holes to explore!
+- Sort by relevance or thematic connection, not alphabetically
+
+FORMAT:
+Return markdown with sections. Example:
+
+## 🕳️ Deep Rabbit Holes
+These fundamental ideas anchor the wonderland:
+- [[The nature of consciousness]] - A deep exploration awaiting
+- [[Memory formation mechanisms]] - Neural pathways to discover
+
+## 🐰 Quick Explorations
+Shorter paths worth exploring:
+- [[Creative problem solving techniques]]
+- [[The role of sleep in learning]]
+
+## 🔗 Connections to Make
+Links between existing ideas:
+- [[How motivation affects memory]]
+
+Unresolved links to organize:
+`;
+
+export const CUSTOM_INSTRUCTIONS_WRAPPER = (customInstructions: string, basePrompt: string): string => {
+  if (!customInstructions || customInstructions.trim() === '') {
+    return basePrompt;
+  }
+
+  return `${basePrompt}
+
+SPECIAL INSTRUCTIONS FOR THIS WONDERLAND:
+${customInstructions}
+
+Apply these special instructions while following the base guidelines above.`;
+};
+
 export const CONCEPT_EXTRACTION_PROMPT = `Analyze the following text and extract key concepts that would make good standalone evergreen notes.
 
 CRITERIA for a good concept:

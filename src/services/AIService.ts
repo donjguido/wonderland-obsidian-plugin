@@ -31,14 +31,29 @@ export class AIService {
   async generate(prompt: string, systemPrompt: string): Promise<AIResponse> {
     const { endpoint, headers, body } = this.buildRequest(prompt, systemPrompt, false);
 
-    const response = await requestUrl({
-      url: endpoint,
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    });
+    console.log('Wonderland - Making request to:', endpoint);
+    console.log('Wonderland - Using model:', body.model);
 
-    return this.parseResponse(response.json);
+    try {
+      const response = await requestUrl({
+        url: endpoint,
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+
+      console.log('Wonderland - Response status:', response.status);
+
+      if (response.status >= 400) {
+        console.error('Wonderland - Error response:', response.json);
+        throw new Error(`API error ${response.status}: ${JSON.stringify(response.json)}`);
+      }
+
+      return this.parseResponse(response.json);
+    } catch (error) {
+      console.error('Wonderland - Request failed:', error);
+      throw error;
+    }
   }
 
   async generateStream(
@@ -131,8 +146,10 @@ export class AIService {
     systemPrompt: string,
     stream: boolean
   ): { endpoint: string; headers: Record<string, string>; body: Record<string, unknown> } {
+    // Always use the correct OpenAI endpoint
+    const endpoint = PROVIDER_DEFAULTS.openai.endpoint!;
     return {
-      endpoint: this.settings.apiEndpoint || PROVIDER_DEFAULTS.openai.endpoint!,
+      endpoint,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.settings.apiKey}`,
@@ -155,8 +172,10 @@ export class AIService {
     systemPrompt: string,
     stream: boolean
   ): { endpoint: string; headers: Record<string, string>; body: Record<string, unknown> } {
+    // Always use the correct Anthropic endpoint
+    const endpoint = PROVIDER_DEFAULTS.anthropic.endpoint!;
     return {
-      endpoint: this.settings.apiEndpoint || PROVIDER_DEFAULTS.anthropic.endpoint!,
+      endpoint,
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': this.settings.apiKey,
