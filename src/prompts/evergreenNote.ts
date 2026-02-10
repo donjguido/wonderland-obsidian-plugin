@@ -197,6 +197,52 @@ ${customInstructions}
 Apply these special instructions while following the base guidelines above.`;
 };
 
+// Folder goal descriptions that affect how AI generates content
+export const FOLDER_GOAL_PROMPTS: Record<string, string> = {
+  learn: `LEARNING FOCUS: Generate content optimized for understanding and retention. Include clear explanations, examples, and connections to foundational concepts. Use analogies when helpful. Structure content to build understanding progressively.`,
+
+  action: `ACTION-ORIENTED FOCUS: Generate practical, actionable content. Include step-by-step guides, checklists, and concrete next steps. Focus on "how to" and "what to do next." Prioritize implementation over theory.`,
+
+  reflect: `CRITICAL REFLECTION FOCUS: Generate content that encourages deep thinking and analysis. Include multiple perspectives, counterarguments, and thought-provoking questions. Challenge assumptions and explore nuances.`,
+
+  research: `RESEARCH FOCUS: Generate well-structured, evidence-based content. Include citations-style references where appropriate, methodological considerations, and connections to broader academic discourse. Note limitations and areas for further investigation.`,
+
+  creative: `CREATIVE EXPLORATION FOCUS: Generate content that sparks imagination and novel connections. Include unconventional perspectives, metaphors, and cross-domain links. Encourage experimentation and "what if" thinking.`,
+
+  custom: '', // Will use customGoalDescription
+};
+
+export const FOLDER_GOAL_WRAPPER = (folderGoal: string, customGoalDescription: string, basePrompt: string): string => {
+  let goalPrompt = FOLDER_GOAL_PROMPTS[folderGoal] || '';
+
+  if (folderGoal === 'custom' && customGoalDescription) {
+    goalPrompt = `CUSTOM FOCUS: ${customGoalDescription}`;
+  }
+
+  if (!goalPrompt) {
+    return basePrompt;
+  }
+
+  return `${basePrompt}
+
+${goalPrompt}`;
+};
+
+export const EXTERNAL_LINKS_PROMPT = (maxLinks: number): string => `
+
+EXTERNAL REFERENCES:
+Include up to ${maxLinks} external reference links to reputable sources that would help the reader learn more. Format these as a "## References" section at the end with markdown links:
+- [Source Title](https://example.com) - Brief description
+
+Choose authoritative sources like Wikipedia, academic institutions, or well-known publications. Only include links you're confident would be helpful.`;
+
+export const PERSONALIZED_SUGGESTIONS_PROMPT = (userInterests: string): string => `
+
+PERSONALIZED FOCUS:
+The user is particularly interested in: ${userInterests}
+
+When generating "Down the rabbit hole" suggestions and links, prioritize connections that relate to these interests. Look for unexpected intersections between the current topic and the user's areas of interest.`;
+
 export const CONCEPT_EXTRACTION_PROMPT = `Analyze the following text and extract key concepts that would make good standalone evergreen notes.
 
 CRITERIA for a good concept:

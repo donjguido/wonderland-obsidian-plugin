@@ -23,7 +23,11 @@ import {
   CLASSIFY_NOTE_PROMPT,
   RABBIT_HOLES_INDEX_PROMPT,
   CUSTOM_INSTRUCTIONS_WRAPPER,
+  FOLDER_GOAL_WRAPPER,
+  EXTERNAL_LINKS_PROMPT,
+  PERSONALIZED_SUGGESTIONS_PROMPT,
 } from './prompts/evergreenNote';
+import { FolderGoal } from './types';
 import {
   PLACEHOLDER_NOTE_SYSTEM_PROMPT,
   PLACEHOLDER_NOTE_USER_PROMPT,
@@ -96,6 +100,33 @@ export default class EvergreenAIPlugin extends Plugin {
   getRabbitHolesIndexName(folderPath: string): string {
     const folderName = folderPath.split('/').pop() || 'Wonderland';
     return `${folderName} Rabbit Holes`;
+  }
+
+  // Handle folder renames - update Wonderland folder paths in settings
+  async handleFolderRename(oldPath: string, newPath: string): Promise<void> {
+    let updated = false;
+
+    for (const folder of this.settings.wonderlandFolders) {
+      if (folder.path === oldPath) {
+        console.log(`Wonderland - Folder renamed from ${oldPath} to ${newPath}`);
+        folder.path = newPath;
+        updated = true;
+      }
+    }
+
+    if (updated) {
+      await this.saveSettings();
+      new Notice(`Wonderland folder path updated: ${newPath}`);
+    }
+  }
+
+  // Get the current folder path from the active file
+  getCurrentFolderPath(): string | null {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!activeFile) return null;
+
+    const parent = activeFile.parent;
+    return parent?.path || null;
   }
 
   async onload() {
@@ -279,6 +310,25 @@ export default class EvergreenAIPlugin extends Plugin {
       })
     );
 
+    // Register handler for folder renames - update Wonderland folder paths in settings
+    this.registerEvent(
+      this.app.vault.on('rename', async (file, oldPath) => {
+        // Check if a Wonderland folder was renamed
+        if (file instanceof TFolder) {
+          await this.handleFolderRename(oldPath, file.path);
+        }
+        // Also handle if a parent folder of a Wonderland was renamed
+        for (const folder of this.settings.wonderlandFolders) {
+          if (folder.path.startsWith(oldPath + '/')) {
+            const newFolderPath = folder.path.replace(oldPath, file.path);
+            console.log(`Wonderland - Parent folder renamed, updating ${folder.path} to ${newFolderPath}`);
+            folder.path = newFolderPath;
+            await this.saveSettings();
+          }
+        }
+      })
+    );
+
     // Add settings tab
     this.addSettingTab(new EvergreenAISettingTab(this.app, this));
 
@@ -394,23 +444,50 @@ export default class EvergreenAIPlugin extends Plugin {
       // Get existing notes for context
       const existingNotes = this.getExistingNoteTitles(folderSettings.path);
 
+      // Build the system prompt with folder goal
+      let systemPrompt = EVERGREEN_NOTE_SYSTEM_PROMPT;
+
+      // Apply folder goal context
+      if (folderSettings.folderGoal) {
+        systemPrompt = FOLDER_GOAL_WRAPPER(
+          folderSettings.folderGoal,
+          folderSettings.customGoalDescription || '',
+          systemPrompt
+        );
+      }
+
+      // Apply custom instructions
+      if (folderSettings.customInstructions) {
+        systemPrompt = CUSTOM_INSTRUCTIONS_WRAPPER(folderSettings.customInstructions, systemPrompt);
+      }
+
+      // Add external links instruction if enabled
+      if (folderSettings.includeExternalLinks) {
+        systemPrompt += EXTERNAL_LINKS_PROMPT(folderSettings.maxExternalLinks || 3);
+      }
+
       // Generate the note content
       const userPrompt = EVERGREEN_NOTE_USER_PROMPT(prompt, '', existingNotes);
-      const response = await this.aiService.generate(userPrompt, EVERGREEN_NOTE_SYSTEM_PROMPT);
+      const response = await this.aiService.generate(userPrompt, systemPrompt);
       const content = response.content;
 
       // Generate title
       const title = await this.generateTitle(content);
 
       // Format and save the note
-      const formattedContent = await this.formatNote(content, folderSettings, prompt);
-      const filePath = await this.saveNote(title, formattedContent, folderSettings);
+      const filePath = await this.saveNote(title, '', folderSettings); // Save first to get path
+      const formattedContent = await this.formatNote(content, folderSettings, prompt, undefined, true, filePath);
+
+      // Update with formatted content
+      const file = this.app.vault.getAbstractFileByPath(filePath);
+      if (file instanceof TFile) {
+        await this.app.vault.modify(file, formattedContent);
+      }
 
       notice.hide();
       new Notice(`Created: ${title}`);
 
       // Open the new note
-      const file = this.app.vault.getAbstractFileByPath(filePath);
       if (file instanceof TFile) {
         await this.app.workspace.getLeaf().openFile(file);
       }
@@ -925,16 +1002,33 @@ ${response.content}
         existingNotes
       );
 
+      // Build system prompt with all enhancements
+      let systemPrompt = PLACEHOLDER_NOTE_SYSTEM_PROMPT;
+
+      // Apply folder goal context
+      if (folderSettings.folderGoal) {
+        systemPrompt = FOLDER_GOAL_WRAPPER(
+          folderSettings.folderGoal,
+          folderSettings.customGoalDescription || '',
+          systemPrompt
+        );
+      }
+
       // Apply custom instructions if set
-      const systemPrompt = CUSTOM_INSTRUCTIONS_WRAPPER(
-        folderSettings.customInstructions,
-        PLACEHOLDER_NOTE_SYSTEM_PROMPT
-      );
+      if (folderSettings.customInstructions) {
+        systemPrompt = CUSTOM_INSTRUCTIONS_WRAPPER(folderSettings.customInstructions, systemPrompt);
+      }
+
+      // Add external links instruction if enabled
+      if (folderSettings.includeExternalLinks) {
+        systemPrompt += EXTERNAL_LINKS_PROMPT(folderSettings.maxExternalLinks || 3);
+      }
 
       const response = await this.aiService.generate(userPrompt, systemPrompt);
       const generatedContent = response.content;
 
-      const formattedContent = await this.formatNote(generatedContent, folderSettings, undefined, title);
+      // Pass the actual file path to ensure correct Wonderland metadata
+      const formattedContent = await this.formatNote(generatedContent, folderSettings, undefined, title, true, file.path);
       await this.app.vault.modify(file, formattedContent);
 
       // Auto-classify into subfolder if enabled
@@ -1080,8 +1174,14 @@ ${response.content}
     }
   }
 
-  async formatNote(content: string, folderSettings: WonderlandFolderSettings, prompt?: string, concept?: string, includeQuestions: boolean = true): Promise<string> {
+  async formatNote(content: string, folderSettings: WonderlandFolderSettings, prompt?: string, concept?: string, includeQuestions: boolean = true, actualFilePath?: string): Promise<string> {
     let formatted = '';
+
+    // Determine the actual Wonderland folder from the file path if provided
+    // This fixes the bug where metadata showed wrong folder
+    const wonderlandPath = actualFilePath
+      ? (this.getWonderlandFolderFor(actualFilePath) || folderSettings.path)
+      : folderSettings.path;
 
     if (folderSettings.includeMetadata) {
       formatted += '---\n';
@@ -1094,7 +1194,10 @@ ${response.content}
         formatted += `concept: "${concept.replace(/"/g, '\\"')}"\n`;
       }
       formatted += `model: ${this.settings.model}\n`;
-      formatted += `wonderland: ${folderSettings.path}\n`;
+      formatted += `wonderland: ${wonderlandPath}\n`;
+      if (folderSettings.folderGoal && folderSettings.folderGoal !== 'learn') {
+        formatted += `goal: ${folderSettings.folderGoal}\n`;
+      }
       formatted += 'tags: [evergreen]\n';
       formatted += '---\n\n';
     }
@@ -1104,7 +1207,7 @@ ${response.content}
     // Add rabbit hole questions if enabled for this folder
     if (includeQuestions && folderSettings.includeFollowUpQuestions) {
       try {
-        const questions = await this.generateRabbitHoleQuestions(content);
+        const questions = await this.generateRabbitHoleQuestions(content, folderSettings);
         if (questions) {
           formatted += '\n\n---\n\n## Down the rabbit hole\n\n';
           formatted += questions;
@@ -1117,9 +1220,16 @@ ${response.content}
     return formatted;
   }
 
-  async generateRabbitHoleQuestions(content: string): Promise<string> {
+  async generateRabbitHoleQuestions(content: string, folderSettings?: WonderlandFolderSettings): Promise<string> {
+    let prompt = RABBIT_HOLE_QUESTIONS_PROMPT + content.substring(0, 1500);
+
+    // Add personalized suggestions based on user interests
+    if (folderSettings?.customizeSuggestions && folderSettings?.userInterests) {
+      prompt += PERSONALIZED_SUGGESTIONS_PROMPT(folderSettings.userInterests);
+    }
+
     const response = await this.aiService.generate(
-      RABBIT_HOLE_QUESTIONS_PROMPT + content.substring(0, 1500),
+      prompt,
       'You are a curious guide to wonderland, creating doorways to deeper knowledge. Each question you ask becomes a portal to explore.'
     );
     return response.content.trim();
@@ -1285,7 +1395,10 @@ class PromptModal extends Modal {
   private onSubmit: (prompt: string, folderPath: string) => void;
   private textArea: HTMLTextAreaElement;
   private folderSelect: HTMLSelectElement;
+  private newFolderInput: HTMLInputElement;
+  private newFolderContainer: HTMLDivElement;
   private plugin: EvergreenAIPlugin;
+  private isCreatingNewFolder: boolean = false;
 
   constructor(app: App, plugin: EvergreenAIPlugin, onSubmit: (prompt: string, folderPath: string) => void) {
     super(app);
@@ -1303,21 +1416,75 @@ class PromptModal extends Modal {
       cls: 'wonderland-prompt-description',
     });
 
-    // Folder selector (if multiple folders configured)
-    if (this.plugin.settings.wonderlandFolders.length > 1) {
-      const folderContainer = contentEl.createDiv({ cls: 'wonderland-folder-select' });
-      folderContainer.style.marginBottom = '1em';
+    // Folder selector - always show for flexibility
+    const folderContainer = contentEl.createDiv({ cls: 'wonderland-folder-select' });
+    folderContainer.style.marginBottom = '1em';
 
-      folderContainer.createEl('label', { text: 'Create in: ' });
+    folderContainer.createEl('label', { text: 'Create in: ' });
 
-      this.folderSelect = folderContainer.createEl('select');
-      for (const folder of this.plugin.settings.wonderlandFolders) {
-        const option = this.folderSelect.createEl('option', {
-          text: folder.path,
-          value: folder.path,
-        });
+    this.folderSelect = folderContainer.createEl('select');
+    this.folderSelect.style.marginRight = '0.5em';
+
+    // Determine the default folder - prefer current folder if it's a Wonderland
+    const currentFolderPath = this.plugin.getCurrentFolderPath();
+    let defaultFolderPath: string | null = null;
+
+    // Check if current folder is already a Wonderland
+    if (currentFolderPath) {
+      const currentWonderland = this.plugin.getWonderlandSettingsFor(currentFolderPath);
+      if (currentWonderland) {
+        defaultFolderPath = currentWonderland.path;
       }
     }
+
+    // Add existing Wonderland folders
+    for (const folder of this.plugin.settings.wonderlandFolders) {
+      const option = this.folderSelect.createEl('option', {
+        text: folder.path,
+        value: folder.path,
+      });
+      if (folder.path === defaultFolderPath) {
+        option.selected = true;
+      }
+    }
+
+    // Add "Current folder" option if it's not already a Wonderland
+    if (currentFolderPath && !this.plugin.isInWonderland(currentFolderPath)) {
+      const option = this.folderSelect.createEl('option', {
+        text: `📁 ${currentFolderPath} (make Wonderland)`,
+        value: `__current__:${currentFolderPath}`,
+      });
+    }
+
+    // Add "Create new folder" option
+    const newFolderOption = this.folderSelect.createEl('option', {
+      text: '➕ Create new Wonderland folder...',
+      value: '__new__',
+    });
+
+    // New folder input (hidden by default)
+    this.newFolderContainer = folderContainer.createDiv({ cls: 'wonderland-new-folder-input' });
+    this.newFolderContainer.style.display = 'none';
+    this.newFolderContainer.style.marginTop = '0.5em';
+
+    this.newFolderInput = this.newFolderContainer.createEl('input', {
+      type: 'text',
+      placeholder: 'Enter new folder name...',
+    });
+    this.newFolderInput.style.width = '100%';
+
+    // Handle folder selection change
+    this.folderSelect.addEventListener('change', () => {
+      const value = this.folderSelect.value;
+      if (value === '__new__') {
+        this.newFolderContainer.style.display = 'block';
+        this.isCreatingNewFolder = true;
+        this.newFolderInput.focus();
+      } else {
+        this.newFolderContainer.style.display = 'none';
+        this.isCreatingNewFolder = false;
+      }
+    });
 
     this.textArea = contentEl.createEl('textarea', {
       cls: 'wonderland-prompt-input',
@@ -1356,15 +1523,224 @@ class PromptModal extends Modal {
     });
   }
 
-  submit() {
+  async submit() {
     const prompt = this.textArea.value.trim();
-    if (prompt) {
-      const folderPath = this.folderSelect?.value || this.plugin.settings.wonderlandFolders[0]?.path;
-      this.close();
-      this.onSubmit(prompt, folderPath);
-    } else {
+    if (!prompt) {
       new Notice('Please enter something to explore');
+      return;
     }
+
+    let folderPath: string;
+    const selectedValue = this.folderSelect?.value || '';
+
+    if (selectedValue === '__new__') {
+      // Creating a new folder
+      const newFolderName = this.newFolderInput.value.trim();
+      if (!newFolderName) {
+        new Notice('Please enter a folder name');
+        return;
+      }
+      folderPath = newFolderName;
+
+      // Create the folder and add as Wonderland
+      try {
+        await this.plugin.ensureFolderExists(folderPath);
+        const newSettings = createFolderSettings(folderPath);
+        this.plugin.settings.wonderlandFolders.push(newSettings);
+        await this.plugin.saveSettings();
+        new Notice(`Created new Wonderland: ${folderPath}`);
+      } catch (e) {
+        new Notice(`Failed to create folder: ${e}`);
+        return;
+      }
+    } else if (selectedValue.startsWith('__current__:')) {
+      // Making current folder a Wonderland
+      folderPath = selectedValue.replace('__current__:', '');
+
+      // Open folder settings modal first
+      this.close();
+      new NewWonderlandSetupModal(this.app, this.plugin, folderPath, async (settings) => {
+        this.plugin.settings.wonderlandFolders.push(settings);
+        await this.plugin.saveSettings();
+        new Notice(`${folderPath} is now a Wonderland!`);
+        // Now generate the note
+        await this.plugin.generateNoteFromPrompt(prompt, folderPath);
+      }).open();
+      return;
+    } else if (selectedValue) {
+      folderPath = selectedValue;
+    } else {
+      folderPath = this.plugin.settings.wonderlandFolders[0]?.path;
+    }
+
+    if (!folderPath) {
+      new Notice('Please select or create a Wonderland folder');
+      return;
+    }
+
+    this.close();
+    this.onSubmit(prompt, folderPath);
+  }
+
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
+  }
+}
+
+// Modal for setting up a new Wonderland folder with customization options
+class NewWonderlandSetupModal extends Modal {
+  private plugin: EvergreenAIPlugin;
+  private folderPath: string;
+  private onComplete: (settings: WonderlandFolderSettings) => void;
+  private settings: WonderlandFolderSettings;
+
+  constructor(
+    app: App,
+    plugin: EvergreenAIPlugin,
+    folderPath: string,
+    onComplete: (settings: WonderlandFolderSettings) => void
+  ) {
+    super(app);
+    this.plugin = plugin;
+    this.folderPath = folderPath;
+    this.onComplete = onComplete;
+    this.settings = createFolderSettings(folderPath);
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+
+    contentEl.createEl('h2', { text: `Setup: ${this.folderPath}` });
+
+    contentEl.createEl('p', {
+      text: 'Customize this Wonderland before creating your first note:',
+      cls: 'wonderland-setup-description',
+    }).style.color = 'var(--text-muted)';
+
+    // Folder Goal selector
+    const goalContainer = contentEl.createDiv({ cls: 'wonderland-setup-goal' });
+    goalContainer.style.marginBottom = '1em';
+
+    goalContainer.createEl('label', { text: 'Folder Goal:' }).style.display = 'block';
+    goalContainer.createEl('small', {
+      text: 'This affects how AI generates content for this Wonderland',
+    }).style.cssText = 'display: block; color: var(--text-muted); margin-bottom: 0.5em;';
+
+    const goalSelect = goalContainer.createEl('select');
+    goalSelect.style.width = '100%';
+
+    const goals: { value: FolderGoal; label: string; desc: string }[] = [
+      { value: 'learn', label: '📚 Learning', desc: 'Optimized for understanding and retention' },
+      { value: 'action', label: '✅ Action-Oriented', desc: 'Practical steps and how-to guides' },
+      { value: 'reflect', label: '🤔 Critical Reflection', desc: 'Deep thinking and multiple perspectives' },
+      { value: 'research', label: '🔬 Research', desc: 'Evidence-based with citations' },
+      { value: 'creative', label: '🎨 Creative', desc: 'Imaginative and unconventional connections' },
+      { value: 'custom', label: '⚙️ Custom', desc: 'Define your own focus' },
+    ];
+
+    for (const goal of goals) {
+      goalSelect.createEl('option', {
+        text: `${goal.label} - ${goal.desc}`,
+        value: goal.value,
+      });
+    }
+
+    // Custom goal description (hidden by default)
+    const customGoalContainer = goalContainer.createDiv();
+    customGoalContainer.style.display = 'none';
+    customGoalContainer.style.marginTop = '0.5em';
+
+    const customGoalInput = customGoalContainer.createEl('textarea', {
+      placeholder: 'Describe the focus for this Wonderland...',
+    });
+    customGoalInput.style.cssText = 'width: 100%; height: 60px;';
+
+    goalSelect.addEventListener('change', () => {
+      this.settings.folderGoal = goalSelect.value as FolderGoal;
+      customGoalContainer.style.display = goalSelect.value === 'custom' ? 'block' : 'none';
+    });
+
+    customGoalInput.addEventListener('input', () => {
+      this.settings.customGoalDescription = customGoalInput.value;
+    });
+
+    // Custom Instructions
+    const instructionsContainer = contentEl.createDiv({ cls: 'wonderland-setup-instructions' });
+    instructionsContainer.style.marginBottom = '1em';
+
+    instructionsContainer.createEl('label', { text: 'Custom Instructions (optional):' }).style.display = 'block';
+    instructionsContainer.createEl('small', {
+      text: 'E.g., "Generate notes as step-by-step cooking guides"',
+    }).style.cssText = 'display: block; color: var(--text-muted); margin-bottom: 0.5em;';
+
+    const instructionsInput = instructionsContainer.createEl('textarea', {
+      placeholder: 'Special instructions for AI generation...',
+    });
+    instructionsInput.style.cssText = 'width: 100%; height: 60px;';
+
+    instructionsInput.addEventListener('input', () => {
+      this.settings.customInstructions = instructionsInput.value;
+    });
+
+    // Quick toggles
+    const togglesContainer = contentEl.createDiv({ cls: 'wonderland-setup-toggles' });
+    togglesContainer.style.marginBottom = '1.5em';
+
+    const toggles = [
+      { key: 'includeExternalLinks', label: '🔗 Include external reference links', default: false },
+      { key: 'customizeSuggestions', label: '🎯 Personalize "rabbit hole" suggestions', default: false },
+    ];
+
+    for (const toggle of toggles) {
+      const toggleDiv = togglesContainer.createDiv();
+      toggleDiv.style.cssText = 'display: flex; align-items: center; margin-bottom: 0.5em;';
+
+      const checkbox = toggleDiv.createEl('input', { type: 'checkbox' });
+      checkbox.checked = toggle.default;
+      checkbox.style.marginRight = '0.5em';
+
+      toggleDiv.createEl('label', { text: toggle.label });
+
+      checkbox.addEventListener('change', () => {
+        (this.settings as any)[toggle.key] = checkbox.checked;
+      });
+    }
+
+    // User interests (for personalized suggestions)
+    const interestsContainer = contentEl.createDiv({ cls: 'wonderland-setup-interests' });
+    interestsContainer.style.marginBottom = '1em';
+
+    interestsContainer.createEl('label', { text: 'Your Interests (optional):' }).style.display = 'block';
+    interestsContainer.createEl('small', {
+      text: 'Comma-separated list to personalize suggestions',
+    }).style.cssText = 'display: block; color: var(--text-muted); margin-bottom: 0.5em;';
+
+    const interestsInput = interestsContainer.createEl('input', {
+      type: 'text',
+      placeholder: 'e.g., philosophy, AI, cooking, music',
+    });
+    interestsInput.style.width = '100%';
+
+    interestsInput.addEventListener('input', () => {
+      this.settings.userInterests = interestsInput.value;
+    });
+
+    // Buttons
+    const buttonContainer = contentEl.createDiv({ cls: 'wonderland-setup-buttons' });
+    buttonContainer.style.cssText = 'display: flex; justify-content: flex-end; gap: 0.5em;';
+
+    const cancelBtn = buttonContainer.createEl('button', { text: 'Cancel' });
+    cancelBtn.addEventListener('click', () => this.close());
+
+    const createBtn = buttonContainer.createEl('button', {
+      text: 'Create Wonderland',
+      cls: 'mod-cta',
+    });
+    createBtn.addEventListener('click', () => {
+      this.close();
+      this.onComplete(this.settings);
+    });
   }
 
   onClose() {

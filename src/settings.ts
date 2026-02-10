@@ -1,6 +1,6 @@
 import { App, PluginSettingTab, Setting, TFolder } from 'obsidian';
 import type EvergreenAIPlugin from './main';
-import { AIProvider, PROVIDER_DEFAULTS, TitleStyle, WonderlandFolderSettings, createFolderSettings } from './types';
+import { AIProvider, PROVIDER_DEFAULTS, TitleStyle, FolderGoal, WonderlandFolderSettings, createFolderSettings } from './types';
 
 export class EvergreenAISettingTab extends PluginSettingTab {
   plugin: EvergreenAIPlugin;
@@ -305,6 +305,53 @@ export class EvergreenAISettingTab extends PluginSettingTab {
 
     containerEl.createEl('h2', { text: `Settings for: ${folderSettings.path}` });
 
+    // Folder Goal Section
+    containerEl.createEl('h3', { text: 'Folder Goal' });
+
+    new Setting(containerEl)
+      .setName('Content focus')
+      .setDesc('How AI should approach generating content for this Wonderland')
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOptions({
+            learn: '📚 Learning - Understanding and retention',
+            action: '✅ Action-Oriented - Practical steps and how-to guides',
+            reflect: '🤔 Critical Reflection - Deep thinking and analysis',
+            research: '🔬 Research - Evidence-based with citations',
+            creative: '🎨 Creative - Imaginative connections',
+            custom: '⚙️ Custom - Define your own focus',
+          })
+          .setValue(folderSettings.folderGoal || 'learn')
+          .onChange(async (value: FolderGoal) => {
+            folderSettings.folderGoal = value;
+            await this.plugin.saveSettings();
+            this.display();
+          })
+      );
+
+    // Custom goal description (only shown when 'custom' is selected)
+    if (folderSettings.folderGoal === 'custom') {
+      new Setting(containerEl)
+        .setName('Custom goal description')
+        .setDesc('Describe the focus for this Wonderland')
+        .addTextArea((text) =>
+          text
+            .setPlaceholder('e.g., "Focus on comparing different philosophical perspectives"')
+            .setValue(folderSettings.customGoalDescription || '')
+            .onChange(async (value) => {
+              folderSettings.customGoalDescription = value;
+              await this.plugin.saveSettings();
+            })
+        )
+        .then((setting) => {
+          const textarea = setting.controlEl.querySelector('textarea');
+          if (textarea) {
+            textarea.style.width = '100%';
+            textarea.style.minHeight = '60px';
+          }
+        });
+    }
+
     // Custom Instructions
     containerEl.createEl('h3', { text: 'Custom Instructions' });
 
@@ -327,6 +374,75 @@ export class EvergreenAISettingTab extends PluginSettingTab {
           textarea.style.minHeight = '80px';
         }
       });
+
+    // External Links Section
+    containerEl.createEl('h3', { text: 'External References' });
+
+    new Setting(containerEl)
+      .setName('Include external links')
+      .setDesc('Add external reference links to reputable sources in generated notes')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(folderSettings.includeExternalLinks || false)
+          .onChange(async (value) => {
+            folderSettings.includeExternalLinks = value;
+            await this.plugin.saveSettings();
+            this.display();
+          })
+      );
+
+    if (folderSettings.includeExternalLinks) {
+      new Setting(containerEl)
+        .setName('Max external links')
+        .setDesc('Maximum number of external reference links per note')
+        .addSlider((slider) =>
+          slider
+            .setLimits(1, 10, 1)
+            .setValue(folderSettings.maxExternalLinks || 3)
+            .setDynamicTooltip()
+            .onChange(async (value) => {
+              folderSettings.maxExternalLinks = value;
+              await this.plugin.saveSettings();
+            })
+        );
+    }
+
+    // Personalized Suggestions Section
+    containerEl.createEl('h3', { text: 'Personalized Suggestions' });
+
+    new Setting(containerEl)
+      .setName('Customize "Down the rabbit hole" suggestions')
+      .setDesc('Base exploration suggestions on your interests')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(folderSettings.customizeSuggestions || false)
+          .onChange(async (value) => {
+            folderSettings.customizeSuggestions = value;
+            await this.plugin.saveSettings();
+            this.display();
+          })
+      );
+
+    if (folderSettings.customizeSuggestions) {
+      new Setting(containerEl)
+        .setName('Your interests')
+        .setDesc('Comma-separated list of topics to personalize suggestions')
+        .addText((text) =>
+          text
+            .setPlaceholder('e.g., philosophy, AI, cooking, music')
+            .setValue(folderSettings.userInterests || '')
+            .onChange(async (value) => {
+              folderSettings.userInterests = value;
+              await this.plugin.saveSettings();
+            })
+        )
+        .then((setting) => {
+          const input = setting.controlEl.querySelector('input');
+          if (input) {
+            input.style.width = '100%';
+          }
+        });
+    }
 
     // Note Generation Settings
     containerEl.createEl('h3', { text: 'Note Generation' });

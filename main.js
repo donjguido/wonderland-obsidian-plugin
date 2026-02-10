@@ -32,12 +32,21 @@ var import_obsidian3 = require("obsidian");
 // src/types.ts
 var DEFAULT_FOLDER_SETTINGS = {
   customInstructions: "",
+  // Folder goal
+  folderGoal: "learn",
+  customGoalDescription: "",
   titleStyle: "concept",
   includeMetadata: true,
+  // External links
+  includeExternalLinks: false,
+  maxExternalLinks: 3,
   maxPlaceholderLinks: 7,
   autoGeneratePlaceholders: true,
   autoGenerateEmptyNotes: true,
   includeFollowUpQuestions: true,
+  // Customizable suggestions
+  customizeSuggestions: false,
+  userInterests: "",
   autoOrganize: false,
   organizeOnInterval: false,
   organizeIntervalMinutes: 30,
@@ -288,6 +297,35 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
     if (!folderSettings)
       return;
     containerEl.createEl("h2", { text: `Settings for: ${folderSettings.path}` });
+    containerEl.createEl("h3", { text: "Folder Goal" });
+    new import_obsidian.Setting(containerEl).setName("Content focus").setDesc("How AI should approach generating content for this Wonderland").addDropdown(
+      (dropdown) => dropdown.addOptions({
+        learn: "\u{1F4DA} Learning - Understanding and retention",
+        action: "\u2705 Action-Oriented - Practical steps and how-to guides",
+        reflect: "\u{1F914} Critical Reflection - Deep thinking and analysis",
+        research: "\u{1F52C} Research - Evidence-based with citations",
+        creative: "\u{1F3A8} Creative - Imaginative connections",
+        custom: "\u2699\uFE0F Custom - Define your own focus"
+      }).setValue(folderSettings.folderGoal || "learn").onChange(async (value) => {
+        folderSettings.folderGoal = value;
+        await this.plugin.saveSettings();
+        this.display();
+      })
+    );
+    if (folderSettings.folderGoal === "custom") {
+      new import_obsidian.Setting(containerEl).setName("Custom goal description").setDesc("Describe the focus for this Wonderland").addTextArea(
+        (text) => text.setPlaceholder('e.g., "Focus on comparing different philosophical perspectives"').setValue(folderSettings.customGoalDescription || "").onChange(async (value) => {
+          folderSettings.customGoalDescription = value;
+          await this.plugin.saveSettings();
+        })
+      ).then((setting) => {
+        const textarea = setting.controlEl.querySelector("textarea");
+        if (textarea) {
+          textarea.style.width = "100%";
+          textarea.style.minHeight = "60px";
+        }
+      });
+    }
     containerEl.createEl("h3", { text: "Custom Instructions" });
     new import_obsidian.Setting(containerEl).setName("Custom instructions for this Wonderland").setDesc('Special instructions for how notes should be generated (e.g., "Generate notes as step-by-step cooking guides" or "Write in a formal academic style")').addTextArea(
       (text) => text.setPlaceholder('e.g., "Generate notes as step-by-step cooking guides with ingredients lists"').setValue(folderSettings.customInstructions || "").onChange(async (value) => {
@@ -301,6 +339,43 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
         textarea.style.minHeight = "80px";
       }
     });
+    containerEl.createEl("h3", { text: "External References" });
+    new import_obsidian.Setting(containerEl).setName("Include external links").setDesc("Add external reference links to reputable sources in generated notes").addToggle(
+      (toggle) => toggle.setValue(folderSettings.includeExternalLinks || false).onChange(async (value) => {
+        folderSettings.includeExternalLinks = value;
+        await this.plugin.saveSettings();
+        this.display();
+      })
+    );
+    if (folderSettings.includeExternalLinks) {
+      new import_obsidian.Setting(containerEl).setName("Max external links").setDesc("Maximum number of external reference links per note").addSlider(
+        (slider) => slider.setLimits(1, 10, 1).setValue(folderSettings.maxExternalLinks || 3).setDynamicTooltip().onChange(async (value) => {
+          folderSettings.maxExternalLinks = value;
+          await this.plugin.saveSettings();
+        })
+      );
+    }
+    containerEl.createEl("h3", { text: "Personalized Suggestions" });
+    new import_obsidian.Setting(containerEl).setName('Customize "Down the rabbit hole" suggestions').setDesc("Base exploration suggestions on your interests").addToggle(
+      (toggle) => toggle.setValue(folderSettings.customizeSuggestions || false).onChange(async (value) => {
+        folderSettings.customizeSuggestions = value;
+        await this.plugin.saveSettings();
+        this.display();
+      })
+    );
+    if (folderSettings.customizeSuggestions) {
+      new import_obsidian.Setting(containerEl).setName("Your interests").setDesc("Comma-separated list of topics to personalize suggestions").addText(
+        (text) => text.setPlaceholder("e.g., philosophy, AI, cooking, music").setValue(folderSettings.userInterests || "").onChange(async (value) => {
+          folderSettings.userInterests = value;
+          await this.plugin.saveSettings();
+        })
+      ).then((setting) => {
+        const input = setting.controlEl.querySelector("input");
+        if (input) {
+          input.style.width = "100%";
+        }
+      });
+    }
     containerEl.createEl("h3", { text: "Note Generation" });
     new import_obsidian.Setting(containerEl).setName("Title Style").setDesc("How to format note titles").addDropdown(
       (dropdown) => dropdown.addOptions({
@@ -1122,6 +1197,40 @@ ${customInstructions}
 
 Apply these special instructions while following the base guidelines above.`;
 };
+var FOLDER_GOAL_PROMPTS = {
+  learn: `LEARNING FOCUS: Generate content optimized for understanding and retention. Include clear explanations, examples, and connections to foundational concepts. Use analogies when helpful. Structure content to build understanding progressively.`,
+  action: `ACTION-ORIENTED FOCUS: Generate practical, actionable content. Include step-by-step guides, checklists, and concrete next steps. Focus on "how to" and "what to do next." Prioritize implementation over theory.`,
+  reflect: `CRITICAL REFLECTION FOCUS: Generate content that encourages deep thinking and analysis. Include multiple perspectives, counterarguments, and thought-provoking questions. Challenge assumptions and explore nuances.`,
+  research: `RESEARCH FOCUS: Generate well-structured, evidence-based content. Include citations-style references where appropriate, methodological considerations, and connections to broader academic discourse. Note limitations and areas for further investigation.`,
+  creative: `CREATIVE EXPLORATION FOCUS: Generate content that sparks imagination and novel connections. Include unconventional perspectives, metaphors, and cross-domain links. Encourage experimentation and "what if" thinking.`,
+  custom: ""
+  // Will use customGoalDescription
+};
+var FOLDER_GOAL_WRAPPER = (folderGoal, customGoalDescription, basePrompt) => {
+  let goalPrompt = FOLDER_GOAL_PROMPTS[folderGoal] || "";
+  if (folderGoal === "custom" && customGoalDescription) {
+    goalPrompt = `CUSTOM FOCUS: ${customGoalDescription}`;
+  }
+  if (!goalPrompt) {
+    return basePrompt;
+  }
+  return `${basePrompt}
+
+${goalPrompt}`;
+};
+var EXTERNAL_LINKS_PROMPT = (maxLinks) => `
+
+EXTERNAL REFERENCES:
+Include up to ${maxLinks} external reference links to reputable sources that would help the reader learn more. Format these as a "## References" section at the end with markdown links:
+- [Source Title](https://example.com) - Brief description
+
+Choose authoritative sources like Wikipedia, academic institutions, or well-known publications. Only include links you're confident would be helpful.`;
+var PERSONALIZED_SUGGESTIONS_PROMPT = (userInterests) => `
+
+PERSONALIZED FOCUS:
+The user is particularly interested in: ${userInterests}
+
+When generating "Down the rabbit hole" suggestions and links, prioritize connections that relate to these interests. Look for unexpected intersections between the current topic and the user's areas of interest.`;
 
 // src/prompts/placeholderNote.ts
 var PLACEHOLDER_NOTE_SYSTEM_PROMPT = `You are creating an Evergreen Note for a concept that was linked from another note.
@@ -1221,6 +1330,29 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
   getRabbitHolesIndexName(folderPath) {
     const folderName = folderPath.split("/").pop() || "Wonderland";
     return `${folderName} Rabbit Holes`;
+  }
+  // Handle folder renames - update Wonderland folder paths in settings
+  async handleFolderRename(oldPath, newPath) {
+    let updated = false;
+    for (const folder of this.settings.wonderlandFolders) {
+      if (folder.path === oldPath) {
+        console.log(`Wonderland - Folder renamed from ${oldPath} to ${newPath}`);
+        folder.path = newPath;
+        updated = true;
+      }
+    }
+    if (updated) {
+      await this.saveSettings();
+      new import_obsidian3.Notice(`Wonderland folder path updated: ${newPath}`);
+    }
+  }
+  // Get the current folder path from the active file
+  getCurrentFolderPath() {
+    const activeFile = this.app.workspace.getActiveFile();
+    if (!activeFile)
+      return null;
+    const parent = activeFile.parent;
+    return (parent == null ? void 0 : parent.path) || null;
   }
   async onload() {
     await this.loadSettings();
@@ -1364,6 +1496,21 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
         }
       })
     );
+    this.registerEvent(
+      this.app.vault.on("rename", async (file, oldPath) => {
+        if (file instanceof import_obsidian3.TFolder) {
+          await this.handleFolderRename(oldPath, file.path);
+        }
+        for (const folder of this.settings.wonderlandFolders) {
+          if (folder.path.startsWith(oldPath + "/")) {
+            const newFolderPath = folder.path.replace(oldPath, file.path);
+            console.log(`Wonderland - Parent folder renamed, updating ${folder.path} to ${newFolderPath}`);
+            folder.path = newFolderPath;
+            await this.saveSettings();
+          }
+        }
+      })
+    );
     this.addSettingTab(new EvergreenAISettingTab(this.app, this));
     this.setupAllIntervals();
     if (!this.settings.hasShownWelcome) {
@@ -1448,15 +1595,32 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
     const notice = new import_obsidian3.Notice("Entering wonderland...", 0);
     try {
       const existingNotes = this.getExistingNoteTitles(folderSettings.path);
+      let systemPrompt = EVERGREEN_NOTE_SYSTEM_PROMPT;
+      if (folderSettings.folderGoal) {
+        systemPrompt = FOLDER_GOAL_WRAPPER(
+          folderSettings.folderGoal,
+          folderSettings.customGoalDescription || "",
+          systemPrompt
+        );
+      }
+      if (folderSettings.customInstructions) {
+        systemPrompt = CUSTOM_INSTRUCTIONS_WRAPPER(folderSettings.customInstructions, systemPrompt);
+      }
+      if (folderSettings.includeExternalLinks) {
+        systemPrompt += EXTERNAL_LINKS_PROMPT(folderSettings.maxExternalLinks || 3);
+      }
       const userPrompt = EVERGREEN_NOTE_USER_PROMPT(prompt, "", existingNotes);
-      const response = await this.aiService.generate(userPrompt, EVERGREEN_NOTE_SYSTEM_PROMPT);
+      const response = await this.aiService.generate(userPrompt, systemPrompt);
       const content = response.content;
       const title = await this.generateTitle(content);
-      const formattedContent = await this.formatNote(content, folderSettings, prompt);
-      const filePath = await this.saveNote(title, formattedContent, folderSettings);
+      const filePath = await this.saveNote(title, "", folderSettings);
+      const formattedContent = await this.formatNote(content, folderSettings, prompt, void 0, true, filePath);
+      const file = this.app.vault.getAbstractFileByPath(filePath);
+      if (file instanceof import_obsidian3.TFile) {
+        await this.app.vault.modify(file, formattedContent);
+      }
       notice.hide();
       new import_obsidian3.Notice(`Created: ${title}`);
-      const file = this.app.vault.getAbstractFileByPath(filePath);
       if (file instanceof import_obsidian3.TFile) {
         await this.app.workspace.getLeaf().openFile(file);
       }
@@ -1875,13 +2039,23 @@ ${response.content}
         "New note",
         existingNotes
       );
-      const systemPrompt = CUSTOM_INSTRUCTIONS_WRAPPER(
-        folderSettings.customInstructions,
-        PLACEHOLDER_NOTE_SYSTEM_PROMPT
-      );
+      let systemPrompt = PLACEHOLDER_NOTE_SYSTEM_PROMPT;
+      if (folderSettings.folderGoal) {
+        systemPrompt = FOLDER_GOAL_WRAPPER(
+          folderSettings.folderGoal,
+          folderSettings.customGoalDescription || "",
+          systemPrompt
+        );
+      }
+      if (folderSettings.customInstructions) {
+        systemPrompt = CUSTOM_INSTRUCTIONS_WRAPPER(folderSettings.customInstructions, systemPrompt);
+      }
+      if (folderSettings.includeExternalLinks) {
+        systemPrompt += EXTERNAL_LINKS_PROMPT(folderSettings.maxExternalLinks || 3);
+      }
       const response = await this.aiService.generate(userPrompt, systemPrompt);
       const generatedContent = response.content;
-      const formattedContent = await this.formatNote(generatedContent, folderSettings, void 0, title);
+      const formattedContent = await this.formatNote(generatedContent, folderSettings, void 0, title, true, file.path);
       await this.app.vault.modify(file, formattedContent);
       if (folderSettings.autoClassifyNewNotes) {
         const classifiedFolder = await this.classifyNoteIntoFolder(title, generatedContent, folderSettings);
@@ -1992,8 +2166,9 @@ ${response.content}
       return this.sanitizeFileName(firstLine.substring(0, 50) || `Note ${Date.now()}`);
     }
   }
-  async formatNote(content, folderSettings, prompt, concept, includeQuestions = true) {
+  async formatNote(content, folderSettings, prompt, concept, includeQuestions = true, actualFilePath) {
     let formatted = "";
+    const wonderlandPath = actualFilePath ? this.getWonderlandFolderFor(actualFilePath) || folderSettings.path : folderSettings.path;
     if (folderSettings.includeMetadata) {
       formatted += "---\n";
       formatted += `created: ${(/* @__PURE__ */ new Date()).toISOString()}
@@ -2010,15 +2185,19 @@ ${response.content}
       }
       formatted += `model: ${this.settings.model}
 `;
-      formatted += `wonderland: ${folderSettings.path}
+      formatted += `wonderland: ${wonderlandPath}
 `;
+      if (folderSettings.folderGoal && folderSettings.folderGoal !== "learn") {
+        formatted += `goal: ${folderSettings.folderGoal}
+`;
+      }
       formatted += "tags: [evergreen]\n";
       formatted += "---\n\n";
     }
     formatted += content;
     if (includeQuestions && folderSettings.includeFollowUpQuestions) {
       try {
-        const questions = await this.generateRabbitHoleQuestions(content);
+        const questions = await this.generateRabbitHoleQuestions(content, folderSettings);
         if (questions) {
           formatted += "\n\n---\n\n## Down the rabbit hole\n\n";
           formatted += questions;
@@ -2029,9 +2208,13 @@ ${response.content}
     }
     return formatted;
   }
-  async generateRabbitHoleQuestions(content) {
+  async generateRabbitHoleQuestions(content, folderSettings) {
+    let prompt = RABBIT_HOLE_QUESTIONS_PROMPT + content.substring(0, 1500);
+    if ((folderSettings == null ? void 0 : folderSettings.customizeSuggestions) && (folderSettings == null ? void 0 : folderSettings.userInterests)) {
+      prompt += PERSONALIZED_SUGGESTIONS_PROMPT(folderSettings.userInterests);
+    }
     const response = await this.aiService.generate(
-      RABBIT_HOLE_QUESTIONS_PROMPT + content.substring(0, 1500),
+      prompt,
       "You are a curious guide to wonderland, creating doorways to deeper knowledge. Each question you ask becomes a portal to explore."
     );
     return response.content.trim();
@@ -2162,6 +2345,7 @@ Which folder should this note go in? Respond with ONLY the folder name.`;
 var PromptModal = class extends import_obsidian3.Modal {
   constructor(app, plugin, onSubmit) {
     super(app);
+    this.isCreatingNewFolder = false;
     this.plugin = plugin;
     this.onSubmit = onSubmit;
   }
@@ -2172,18 +2356,57 @@ var PromptModal = class extends import_obsidian3.Modal {
       text: "What rabbit hole would you like to explore?",
       cls: "wonderland-prompt-description"
     });
-    if (this.plugin.settings.wonderlandFolders.length > 1) {
-      const folderContainer = contentEl.createDiv({ cls: "wonderland-folder-select" });
-      folderContainer.style.marginBottom = "1em";
-      folderContainer.createEl("label", { text: "Create in: " });
-      this.folderSelect = folderContainer.createEl("select");
-      for (const folder of this.plugin.settings.wonderlandFolders) {
-        const option = this.folderSelect.createEl("option", {
-          text: folder.path,
-          value: folder.path
-        });
+    const folderContainer = contentEl.createDiv({ cls: "wonderland-folder-select" });
+    folderContainer.style.marginBottom = "1em";
+    folderContainer.createEl("label", { text: "Create in: " });
+    this.folderSelect = folderContainer.createEl("select");
+    this.folderSelect.style.marginRight = "0.5em";
+    const currentFolderPath = this.plugin.getCurrentFolderPath();
+    let defaultFolderPath = null;
+    if (currentFolderPath) {
+      const currentWonderland = this.plugin.getWonderlandSettingsFor(currentFolderPath);
+      if (currentWonderland) {
+        defaultFolderPath = currentWonderland.path;
       }
     }
+    for (const folder of this.plugin.settings.wonderlandFolders) {
+      const option = this.folderSelect.createEl("option", {
+        text: folder.path,
+        value: folder.path
+      });
+      if (folder.path === defaultFolderPath) {
+        option.selected = true;
+      }
+    }
+    if (currentFolderPath && !this.plugin.isInWonderland(currentFolderPath)) {
+      const option = this.folderSelect.createEl("option", {
+        text: `\u{1F4C1} ${currentFolderPath} (make Wonderland)`,
+        value: `__current__:${currentFolderPath}`
+      });
+    }
+    const newFolderOption = this.folderSelect.createEl("option", {
+      text: "\u2795 Create new Wonderland folder...",
+      value: "__new__"
+    });
+    this.newFolderContainer = folderContainer.createDiv({ cls: "wonderland-new-folder-input" });
+    this.newFolderContainer.style.display = "none";
+    this.newFolderContainer.style.marginTop = "0.5em";
+    this.newFolderInput = this.newFolderContainer.createEl("input", {
+      type: "text",
+      placeholder: "Enter new folder name..."
+    });
+    this.newFolderInput.style.width = "100%";
+    this.folderSelect.addEventListener("change", () => {
+      const value = this.folderSelect.value;
+      if (value === "__new__") {
+        this.newFolderContainer.style.display = "block";
+        this.isCreatingNewFolder = true;
+        this.newFolderInput.focus();
+      } else {
+        this.newFolderContainer.style.display = "none";
+        this.isCreatingNewFolder = false;
+      }
+    });
     this.textArea = contentEl.createEl("textarea", {
       cls: "wonderland-prompt-input",
       attr: {
@@ -2214,16 +2437,166 @@ var PromptModal = class extends import_obsidian3.Modal {
       }
     });
   }
-  submit() {
+  async submit() {
     var _a, _b;
     const prompt = this.textArea.value.trim();
-    if (prompt) {
-      const folderPath = ((_a = this.folderSelect) == null ? void 0 : _a.value) || ((_b = this.plugin.settings.wonderlandFolders[0]) == null ? void 0 : _b.path);
-      this.close();
-      this.onSubmit(prompt, folderPath);
-    } else {
+    if (!prompt) {
       new import_obsidian3.Notice("Please enter something to explore");
+      return;
     }
+    let folderPath;
+    const selectedValue = ((_a = this.folderSelect) == null ? void 0 : _a.value) || "";
+    if (selectedValue === "__new__") {
+      const newFolderName = this.newFolderInput.value.trim();
+      if (!newFolderName) {
+        new import_obsidian3.Notice("Please enter a folder name");
+        return;
+      }
+      folderPath = newFolderName;
+      try {
+        await this.plugin.ensureFolderExists(folderPath);
+        const newSettings = createFolderSettings(folderPath);
+        this.plugin.settings.wonderlandFolders.push(newSettings);
+        await this.plugin.saveSettings();
+        new import_obsidian3.Notice(`Created new Wonderland: ${folderPath}`);
+      } catch (e) {
+        new import_obsidian3.Notice(`Failed to create folder: ${e}`);
+        return;
+      }
+    } else if (selectedValue.startsWith("__current__:")) {
+      folderPath = selectedValue.replace("__current__:", "");
+      this.close();
+      new NewWonderlandSetupModal(this.app, this.plugin, folderPath, async (settings) => {
+        this.plugin.settings.wonderlandFolders.push(settings);
+        await this.plugin.saveSettings();
+        new import_obsidian3.Notice(`${folderPath} is now a Wonderland!`);
+        await this.plugin.generateNoteFromPrompt(prompt, folderPath);
+      }).open();
+      return;
+    } else if (selectedValue) {
+      folderPath = selectedValue;
+    } else {
+      folderPath = (_b = this.plugin.settings.wonderlandFolders[0]) == null ? void 0 : _b.path;
+    }
+    if (!folderPath) {
+      new import_obsidian3.Notice("Please select or create a Wonderland folder");
+      return;
+    }
+    this.close();
+    this.onSubmit(prompt, folderPath);
+  }
+  onClose() {
+    const { contentEl } = this;
+    contentEl.empty();
+  }
+};
+var NewWonderlandSetupModal = class extends import_obsidian3.Modal {
+  constructor(app, plugin, folderPath, onComplete) {
+    super(app);
+    this.plugin = plugin;
+    this.folderPath = folderPath;
+    this.onComplete = onComplete;
+    this.settings = createFolderSettings(folderPath);
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.createEl("h2", { text: `Setup: ${this.folderPath}` });
+    contentEl.createEl("p", {
+      text: "Customize this Wonderland before creating your first note:",
+      cls: "wonderland-setup-description"
+    }).style.color = "var(--text-muted)";
+    const goalContainer = contentEl.createDiv({ cls: "wonderland-setup-goal" });
+    goalContainer.style.marginBottom = "1em";
+    goalContainer.createEl("label", { text: "Folder Goal:" }).style.display = "block";
+    goalContainer.createEl("small", {
+      text: "This affects how AI generates content for this Wonderland"
+    }).style.cssText = "display: block; color: var(--text-muted); margin-bottom: 0.5em;";
+    const goalSelect = goalContainer.createEl("select");
+    goalSelect.style.width = "100%";
+    const goals = [
+      { value: "learn", label: "\u{1F4DA} Learning", desc: "Optimized for understanding and retention" },
+      { value: "action", label: "\u2705 Action-Oriented", desc: "Practical steps and how-to guides" },
+      { value: "reflect", label: "\u{1F914} Critical Reflection", desc: "Deep thinking and multiple perspectives" },
+      { value: "research", label: "\u{1F52C} Research", desc: "Evidence-based with citations" },
+      { value: "creative", label: "\u{1F3A8} Creative", desc: "Imaginative and unconventional connections" },
+      { value: "custom", label: "\u2699\uFE0F Custom", desc: "Define your own focus" }
+    ];
+    for (const goal of goals) {
+      goalSelect.createEl("option", {
+        text: `${goal.label} - ${goal.desc}`,
+        value: goal.value
+      });
+    }
+    const customGoalContainer = goalContainer.createDiv();
+    customGoalContainer.style.display = "none";
+    customGoalContainer.style.marginTop = "0.5em";
+    const customGoalInput = customGoalContainer.createEl("textarea", {
+      placeholder: "Describe the focus for this Wonderland..."
+    });
+    customGoalInput.style.cssText = "width: 100%; height: 60px;";
+    goalSelect.addEventListener("change", () => {
+      this.settings.folderGoal = goalSelect.value;
+      customGoalContainer.style.display = goalSelect.value === "custom" ? "block" : "none";
+    });
+    customGoalInput.addEventListener("input", () => {
+      this.settings.customGoalDescription = customGoalInput.value;
+    });
+    const instructionsContainer = contentEl.createDiv({ cls: "wonderland-setup-instructions" });
+    instructionsContainer.style.marginBottom = "1em";
+    instructionsContainer.createEl("label", { text: "Custom Instructions (optional):" }).style.display = "block";
+    instructionsContainer.createEl("small", {
+      text: 'E.g., "Generate notes as step-by-step cooking guides"'
+    }).style.cssText = "display: block; color: var(--text-muted); margin-bottom: 0.5em;";
+    const instructionsInput = instructionsContainer.createEl("textarea", {
+      placeholder: "Special instructions for AI generation..."
+    });
+    instructionsInput.style.cssText = "width: 100%; height: 60px;";
+    instructionsInput.addEventListener("input", () => {
+      this.settings.customInstructions = instructionsInput.value;
+    });
+    const togglesContainer = contentEl.createDiv({ cls: "wonderland-setup-toggles" });
+    togglesContainer.style.marginBottom = "1.5em";
+    const toggles = [
+      { key: "includeExternalLinks", label: "\u{1F517} Include external reference links", default: false },
+      { key: "customizeSuggestions", label: '\u{1F3AF} Personalize "rabbit hole" suggestions', default: false }
+    ];
+    for (const toggle of toggles) {
+      const toggleDiv = togglesContainer.createDiv();
+      toggleDiv.style.cssText = "display: flex; align-items: center; margin-bottom: 0.5em;";
+      const checkbox = toggleDiv.createEl("input", { type: "checkbox" });
+      checkbox.checked = toggle.default;
+      checkbox.style.marginRight = "0.5em";
+      toggleDiv.createEl("label", { text: toggle.label });
+      checkbox.addEventListener("change", () => {
+        this.settings[toggle.key] = checkbox.checked;
+      });
+    }
+    const interestsContainer = contentEl.createDiv({ cls: "wonderland-setup-interests" });
+    interestsContainer.style.marginBottom = "1em";
+    interestsContainer.createEl("label", { text: "Your Interests (optional):" }).style.display = "block";
+    interestsContainer.createEl("small", {
+      text: "Comma-separated list to personalize suggestions"
+    }).style.cssText = "display: block; color: var(--text-muted); margin-bottom: 0.5em;";
+    const interestsInput = interestsContainer.createEl("input", {
+      type: "text",
+      placeholder: "e.g., philosophy, AI, cooking, music"
+    });
+    interestsInput.style.width = "100%";
+    interestsInput.addEventListener("input", () => {
+      this.settings.userInterests = interestsInput.value;
+    });
+    const buttonContainer = contentEl.createDiv({ cls: "wonderland-setup-buttons" });
+    buttonContainer.style.cssText = "display: flex; justify-content: flex-end; gap: 0.5em;";
+    const cancelBtn = buttonContainer.createEl("button", { text: "Cancel" });
+    cancelBtn.addEventListener("click", () => this.close());
+    const createBtn = buttonContainer.createEl("button", {
+      text: "Create Wonderland",
+      cls: "mod-cta"
+    });
+    createBtn.addEventListener("click", () => {
+      this.close();
+      this.onComplete(this.settings);
+    });
   }
   onClose() {
     const { contentEl } = this;

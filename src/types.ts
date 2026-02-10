@@ -3,6 +3,9 @@ export type AIProvider = 'openai' | 'anthropic' | 'ollama' | 'custom';
 export type TitleStyle = 'concept' | 'question' | 'statement';
 export type SuggestionFrequency = 'always' | 'daily' | 'weekly' | 'manual';
 
+// Folder goal types for different learning/exploration styles
+export type FolderGoal = 'learn' | 'action' | 'reflect' | 'research' | 'creative' | 'custom';
+
 // Per-folder Wonderland settings
 export interface WonderlandFolderSettings {
   path: string;  // The folder path (e.g., "Research", "Ideas/Projects")
@@ -10,15 +13,27 @@ export interface WonderlandFolderSettings {
   // Custom instructions for this Wonderland
   customInstructions: string;  // e.g., "Generate notes as step-by-step cooking guides"
 
+  // Folder goal/context - affects how AI generates content
+  folderGoal: FolderGoal;
+  customGoalDescription: string;  // Used when folderGoal is 'custom'
+
   // Note Generation
   titleStyle: TitleStyle;
   includeMetadata: boolean;
+
+  // External links - add web sources to notes
+  includeExternalLinks: boolean;  // Add external reference links
+  maxExternalLinks: number;  // Max number of external links per note
 
   // Placeholder Settings
   maxPlaceholderLinks: number;
   autoGeneratePlaceholders: boolean;
   autoGenerateEmptyNotes: boolean;
   includeFollowUpQuestions: boolean;
+
+  // Customizable "Down the rabbit hole" suggestions
+  customizeSuggestions: boolean;  // Base suggestions on user interests
+  userInterests: string;  // Comma-separated interests for personalized suggestions
 
   // Organization
   autoOrganize: boolean;
@@ -43,13 +58,25 @@ export interface WonderlandFolderSettings {
 export const DEFAULT_FOLDER_SETTINGS: Omit<WonderlandFolderSettings, 'path'> = {
   customInstructions: '',
 
+  // Folder goal
+  folderGoal: 'learn',
+  customGoalDescription: '',
+
   titleStyle: 'concept',
   includeMetadata: true,
+
+  // External links
+  includeExternalLinks: false,
+  maxExternalLinks: 3,
 
   maxPlaceholderLinks: 7,
   autoGeneratePlaceholders: true,
   autoGenerateEmptyNotes: true,
   includeFollowUpQuestions: true,
+
+  // Customizable suggestions
+  customizeSuggestions: false,
+  userInterests: '',
 
   autoOrganize: false,
   organizeOnInterval: false,
