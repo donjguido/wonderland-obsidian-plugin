@@ -6,8 +6,7 @@ Wonderland is an AI-powered Obsidian plugin that transforms how you explore idea
 
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20Development-ff5f5f?logo=ko-fi)](https://ko-fi.com/donjguido)
 
-<!-- TODO: Add hero screenshot/GIF showing the plugin in action -->
-<!-- Suggested: A GIF showing: Enter Wonderland → type topic → note generates with links → click link → new note auto-generates -->
+![Demo of Wonderland](assets/Wonderland_Demonstration.gif)
 
 ## Features
 
