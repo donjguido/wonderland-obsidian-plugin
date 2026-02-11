@@ -121,6 +121,36 @@ export default class EvergreenAIPlugin extends Plugin {
     }
   }
 
+  // Handle folder deletion - remove deleted Wonderland folders from settings
+  async handleFolderDelete(deletedPath: string): Promise<void> {
+    const initialLength = this.settings.wonderlandFolders.length;
+
+    // Remove exact matches and any subfolders of the deleted folder
+    this.settings.wonderlandFolders = this.settings.wonderlandFolders.filter(folder => {
+      const isDeleted = folder.path === deletedPath || folder.path.startsWith(deletedPath + '/');
+      if (isDeleted) {
+        console.log(`Wonderland - Removing deleted folder from settings: ${folder.path}`);
+      }
+      return !isDeleted;
+    });
+
+    if (this.settings.wonderlandFolders.length < initialLength) {
+      // Adjust selected index if needed
+      if (this.settings.selectedFolderIndex >= this.settings.wonderlandFolders.length) {
+        this.settings.selectedFolderIndex = Math.max(0, this.settings.wonderlandFolders.length - 1);
+      }
+
+      // Clear last active folder if it was the deleted one
+      if (this.lastActiveWonderlandFolder === deletedPath ||
+          this.lastActiveWonderlandFolder?.startsWith(deletedPath + '/')) {
+        this.lastActiveWonderlandFolder = null;
+      }
+
+      await this.saveSettings();
+      new Notice(`Wonderland folder removed: ${deletedPath}`);
+    }
+  }
+
   // Get the current folder path from the active file
   getCurrentFolderPath(): string | null {
     const activeFile = this.app.workspace.getActiveFile();
@@ -480,6 +510,15 @@ export default class EvergreenAIPlugin extends Plugin {
             folder.path = newFolderPath;
             await this.saveSettings();
           }
+        }
+      })
+    );
+
+    // Register handler for folder/file deletion - remove deleted Wonderland folders from settings
+    this.registerEvent(
+      this.app.vault.on('delete', async (file) => {
+        if (file instanceof TFolder) {
+          await this.handleFolderDelete(file.path);
         }
       })
     );

@@ -1492,6 +1492,28 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
       new import_obsidian3.Notice(`Wonderland folder path updated: ${newPath}`);
     }
   }
+  // Handle folder deletion - remove deleted Wonderland folders from settings
+  async handleFolderDelete(deletedPath) {
+    var _a;
+    const initialLength = this.settings.wonderlandFolders.length;
+    this.settings.wonderlandFolders = this.settings.wonderlandFolders.filter((folder) => {
+      const isDeleted = folder.path === deletedPath || folder.path.startsWith(deletedPath + "/");
+      if (isDeleted) {
+        console.log(`Wonderland - Removing deleted folder from settings: ${folder.path}`);
+      }
+      return !isDeleted;
+    });
+    if (this.settings.wonderlandFolders.length < initialLength) {
+      if (this.settings.selectedFolderIndex >= this.settings.wonderlandFolders.length) {
+        this.settings.selectedFolderIndex = Math.max(0, this.settings.wonderlandFolders.length - 1);
+      }
+      if (this.lastActiveWonderlandFolder === deletedPath || ((_a = this.lastActiveWonderlandFolder) == null ? void 0 : _a.startsWith(deletedPath + "/"))) {
+        this.lastActiveWonderlandFolder = null;
+      }
+      await this.saveSettings();
+      new import_obsidian3.Notice(`Wonderland folder removed: ${deletedPath}`);
+    }
+  }
   // Get the current folder path from the active file
   getCurrentFolderPath() {
     const activeFile = this.app.workspace.getActiveFile();
@@ -1767,6 +1789,13 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
             folder.path = newFolderPath;
             await this.saveSettings();
           }
+        }
+      })
+    );
+    this.registerEvent(
+      this.app.vault.on("delete", async (file) => {
+        if (file instanceof import_obsidian3.TFolder) {
+          await this.handleFolderDelete(file.path);
         }
       })
     );
