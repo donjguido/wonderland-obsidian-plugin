@@ -1,7 +1,6 @@
 import { requestUrl, Platform } from 'obsidian';
 import {
   EvergreenAISettings,
-  AIProvider,
   AIStreamChunk,
   AIResponse,
   PROVIDER_DEFAULTS
@@ -11,7 +10,7 @@ import {
 const DEBUG = false;
 function debugLog(...args: unknown[]): void {
   if (DEBUG) {
-    console.log('Wonderland AI -', ...args);
+    console.debug('Wonderland AI -', ...args);
   }
 }
 
@@ -158,82 +157,48 @@ export class AIService {
       return;
     }
 
+    // Use requestUrl for streaming - Obsidian's API handles it
     const { endpoint, headers, body } = this.buildRequest(prompt, systemPrompt, true);
 
-    // Create an AbortController for timeout handling
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
-
     try {
-      const response = await fetch(endpoint, {
+      const response = await requestUrl({
+        url: endpoint,
         method: 'POST',
         headers,
         body: JSON.stringify(body),
-        signal: controller.signal,
       });
 
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        throw this.parseErrorResponse(response.status, errorBody);
+      if (response.status >= 400) {
+        throw this.parseErrorResponse(response.status, response.json);
       }
 
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new AIServiceError('No response body', AIErrorCode.UNKNOWN, false);
-      }
+      // requestUrl returns the full response - parse it as streamed chunks
+      const text = typeof response.text === 'string' ? response.text : JSON.stringify(response.json);
+      const lines = text.split('\n');
 
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      try {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            const chunk = this.parseStreamChunk(line);
-            if (chunk) {
-              if (chunk.done) {
-                onComplete();
-                return;
-              }
-              if (chunk.content) {
-                onChunk(chunk.content);
-              }
-            }
+      for (const line of lines) {
+        const chunk = this.parseStreamChunk(line);
+        if (chunk) {
+          if (chunk.done) {
+            onComplete();
+            return;
           }
-        }
-
-        // Process any remaining buffer
-        if (buffer) {
-          const chunk = this.parseStreamChunk(buffer);
-          if (chunk?.content) {
+          if (chunk.content) {
             onChunk(chunk.content);
           }
         }
-
-        onComplete();
-      } finally {
-        reader.releaseLock();
       }
+
+      // If we got here without a done signal, try to extract content from JSON response
+      if (response.json) {
+        const parsed = this.parseResponse(response.json);
+        if (parsed.content) {
+          onChunk(parsed.content);
+        }
+      }
+
+      onComplete();
     } catch (error) {
-      clearTimeout(timeoutId);
-
-      // Handle abort/timeout
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new AIServiceError(
-          'Request timed out - try with shorter content or check your connection',
-          AIErrorCode.TIMEOUT,
-          true
-        );
-      }
-
       if (error instanceof AIServiceError) {
         throw error;
       }
@@ -364,7 +329,7 @@ export class AIService {
 
       case 404:
         errorCode = AIErrorCode.MODEL_NOT_FOUND;
-        message = `Model not found - please check the model name in settings`;
+        message = 'Model not found - please check the model name in settings';
         break;
 
       case 429:
@@ -397,7 +362,7 @@ export class AIService {
       case 504:
         errorCode = AIErrorCode.SERVER_ERROR;
         retryable = true;
-        message = `Server error (${status}) - the AI service may be experiencing issues. Retrying...`;
+        message = `Server error (${String(status)}) - the AI service may be experiencing issues. Retrying...`;
         retryAfter = 5; // Short retry for server errors
         break;
 
@@ -427,8 +392,10 @@ export class AIService {
         return this.buildOllamaRequest(prompt, systemPrompt, stream);
       case 'custom':
         return this.buildCustomRequest(prompt, systemPrompt, stream);
-      default:
-        throw new AIServiceError(`Unknown provider: ${provider}`, AIErrorCode.UNKNOWN, false);
+      default: {
+        const unknownProvider: string = provider;
+        throw new AIServiceError(`Unknown provider: ${unknownProvider}`, AIErrorCode.UNKNOWN, false);
+      }
     }
   }
 

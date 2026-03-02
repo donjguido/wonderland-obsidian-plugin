@@ -394,6 +394,149 @@
   min-height: 80px;
 }
 
+.wonderland-settings-textarea-short textarea {
+  width: 100%;
+  min-height: 60px;
+}
+
 .wonderland-settings-input input {
   width: 100%;
+}
+
+/* Welcome modal */
+.wonderland-welcome-emoji {
+  font-size: 4em;
+  text-align: center;
+  margin-bottom: 0.5em;
+}
+
+.wonderland-welcome-title {
+  text-align: center;
+  margin-bottom: 0.5em;
+}
+
+.wonderland-welcome-subtitle {
+  text-align: center;
+  color: var(--text-muted);
+  margin-bottom: 1.5em;
+  font-style: italic;
+}
+
+.wonderland-features {
+  margin-bottom: 1.5em;
+}
+
+.wonderland-feature {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 1em;
+}
+
+.wonderland-feature-emoji {
+  font-size: 1.5em;
+  margin-right: 0.75em;
+}
+
+.wonderland-feature-desc {
+  margin: 0.25em 0 0 0;
+  color: var(--text-muted);
+  font-size: 0.9em;
+}
+
+.wonderland-getting-started {
+  background: var(--background-secondary);
+  padding: 1em;
+  border-radius: 8px;
+  margin-bottom: 1.5em;
+}
+
+.wonderland-getting-started h3 {
+  margin-top: 0;
+}
+
+.wonderland-getting-started ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+
+.wonderland-getting-started li {
+  margin-bottom: 0.5em;
+}
+
+.wonderland-welcome-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 1em;
+}
+
+.wonderland-welcome-quote {
+  text-align: center;
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.wonderland-welcome-footer {
+  margin-top: 1em;
+}
+
+/* Setup modal */
+.wonderland-setup-section {
+  margin-bottom: 1em;
+}
+
+.wonderland-setup-label {
+  display: block;
+}
+
+.wonderland-setup-hint {
+  display: block;
+  color: var(--text-muted);
+  margin-bottom: 0.5em;
+}
+
+.wonderland-setup-select {
+  width: 100%;
+}
+
+.wonderland-setup-textarea {
+  width: 100%;
+  height: 60px;
+}
+
+.wonderland-setup-toggles {
+  margin-bottom: 1.5em;
+}
+
+.wonderland-setup-toggle {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.5em;
+}
+
+.wonderland-setup-toggle input {
+  margin-right: 0.5em;
+}
+
+.wonderland-setup-input {
+  width: 100%;
+}
+
+.wonderland-setup-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5em;
+}
+
+/* Prompt modal folder selector */
+.wonderland-folder-select select {
+  margin-right: 0.5em;
+}
+
+.wonderland-new-folder-input {
+  display: none;
+  margin-top: 0.5em;
+}
+
+.wonderland-new-folder-input.is-visible {
+  display: block;
 }
