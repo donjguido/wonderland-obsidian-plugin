@@ -1,7 +1,7 @@
 {
   "name": "wonderland-obsidian",
   "version": "1.0.1",
-  "description": "AI-powered note generation for Obsidian - go down the rabbit hole of knowledge",
+  "description": "Go down the rabbit hole of knowledge. AI generates linked notes that expand on click, letting you explore ideas endlessly. Features auto-organization, knowledge enrichment, and customizable Wonderland folders.",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
