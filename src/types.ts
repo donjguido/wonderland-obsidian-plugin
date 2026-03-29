@@ -129,6 +129,9 @@ export interface EvergreenAISettings {
   // Currently selected folder in settings UI
   selectedFolderIndex: number;
 
+  // Killswitch - emergency stop for all AI operations
+  killswitchActive: boolean;
+
   // Onboarding
   hasShownWelcome: boolean;  // Track if welcome modal has been shown
 
@@ -150,6 +153,8 @@ export const DEFAULT_SETTINGS: EvergreenAISettings = {
 
   wonderlandFolders: [],  // Start empty, user picks existing folders
   selectedFolderIndex: 0,
+
+  killswitchActive: false,
 
   hasShownWelcome: false,
 

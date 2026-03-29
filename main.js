@@ -78,6 +78,7 @@ var DEFAULT_SETTINGS = {
   wonderlandFolders: [],
   // Start empty, user picks existing folders
   selectedFolderIndex: 0,
+  killswitchActive: false,
   hasShownWelcome: false,
   placeholderIndicator: "\u2728",
   enableSuggestions: true,
@@ -119,6 +120,20 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
     containerEl.createEl("h1", { text: "Wonderland Settings" });
+    const killswitchContainer = containerEl.createDiv({ cls: "wonderland-killswitch" });
+    killswitchContainer.style.cssText = `
+      padding: 12px 16px;
+      margin-bottom: 1.5em;
+      border-radius: 8px;
+      border: 2px solid ${this.plugin.settings.killswitchActive ? "var(--text-error)" : "var(--background-modifier-border)"};
+      background: ${this.plugin.settings.killswitchActive ? "var(--background-modifier-error)" : "var(--background-secondary)"};
+    `;
+    new import_obsidian.Setting(killswitchContainer).setName("AI Killswitch").setDesc(this.plugin.settings.killswitchActive ? "All AI operations are STOPPED. Toggle off to resume." : "Emergency stop for all AI operations (cancels in-flight requests, stops all automation)").addToggle(
+      (toggle) => toggle.setValue(this.plugin.settings.killswitchActive).onChange(async () => {
+        await this.plugin.toggleKillswitch();
+        this.display();
+      })
+    );
     containerEl.createEl("h2", { text: "AI Configuration" });
     new import_obsidian.Setting(containerEl).setName("AI Provider").setDesc("Select your AI provider").addDropdown(
       (dropdown) => dropdown.addOptions({
@@ -676,11 +691,57 @@ var DEFAULT_RETRY_CONFIG = {
 };
 var AIService = class {
   constructor(settings, retryConfig) {
+    this.activeAbortControllers = /* @__PURE__ */ new Set();
+    this._killed = false;
     this.settings = settings;
     this.retryConfig = { ...DEFAULT_RETRY_CONFIG, ...retryConfig };
   }
   updateSettings(settings) {
     this.settings = settings;
+  }
+  get killed() {
+    return this._killed;
+  }
+  /**
+   * Activate killswitch: abort all in-flight requests and block new ones.
+   */
+  kill() {
+    this._killed = true;
+    for (const controller of this.activeAbortControllers) {
+      controller.abort();
+    }
+    this.activeAbortControllers.clear();
+  }
+  /**
+   * Deactivate killswitch: allow new requests again.
+   */
+  revive() {
+    this._killed = false;
+  }
+  /**
+   * Cancel all in-flight requests without blocking future ones.
+   * Returns true if any requests were cancelled.
+   */
+  cancelAll() {
+    if (this.activeAbortControllers.size === 0)
+      return false;
+    for (const controller of this.activeAbortControllers) {
+      controller.abort();
+    }
+    this.activeAbortControllers.clear();
+    return true;
+  }
+  get hasActiveRequests() {
+    return this.activeAbortControllers.size > 0;
+  }
+  ensureAlive() {
+    if (this._killed) {
+      throw new AIServiceError(
+        "AI operations are disabled (killswitch active)",
+        "UNKNOWN" /* UNKNOWN */,
+        false
+      );
+    }
   }
   async testConnection() {
     try {
@@ -692,6 +753,7 @@ var AIService = class {
     }
   }
   async generate(prompt, systemPrompt) {
+    this.ensureAlive();
     if (import_obsidian2.Platform.isMobile && this.settings.aiProvider === "ollama") {
       throw new AIServiceError(
         "Ollama (local AI) is not supported on mobile devices. Please use OpenAI, Anthropic, or a cloud-based custom endpoint.",
@@ -703,13 +765,13 @@ var AIService = class {
       const { endpoint, headers, body } = this.buildRequest(prompt, systemPrompt, false);
       debugLog(" Making request to:", endpoint);
       debugLog(" Using model:", body.model);
+      const controller = new AbortController();
+      this.activeAbortControllers.add(controller);
       try {
-        const response = await (0, import_obsidian2.requestUrl)({
-          url: endpoint,
-          method: "POST",
-          headers,
-          body: JSON.stringify(body)
-        });
+        const response = await this.requestWithAbort(
+          { url: endpoint, method: "POST", headers, body: JSON.stringify(body) },
+          controller.signal
+        );
         debugLog(" Response status:", response.status);
         if (response.status >= 400) {
           console.error("AIService: Error response:", response.json);
@@ -717,6 +779,13 @@ var AIService = class {
         }
         return this.parseResponse(response.json);
       } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          throw new AIServiceError(
+            "Request cancelled",
+            "UNKNOWN" /* UNKNOWN */,
+            false
+          );
+        }
         if (this.isNetworkError(error)) {
           throw new AIServiceError(
             "Network error - please check your internet connection",
@@ -733,11 +802,14 @@ var AIService = class {
           "UNKNOWN" /* UNKNOWN */,
           false
         );
+      } finally {
+        this.activeAbortControllers.delete(controller);
       }
     });
   }
   async generateStream(prompt, systemPrompt, onChunk, onComplete) {
     var _a;
+    this.ensureAlive();
     if (import_obsidian2.Platform.isMobile) {
       if (this.settings.aiProvider === "ollama") {
         throw new AIServiceError(
@@ -753,6 +825,7 @@ var AIService = class {
     }
     const { endpoint, headers, body } = this.buildRequest(prompt, systemPrompt, true);
     const controller = new AbortController();
+    this.activeAbortControllers.add(controller);
     const timeoutId = setTimeout(() => controller.abort(), 12e4);
     try {
       const response = await fetch(endpoint, {
@@ -802,10 +875,26 @@ var AIService = class {
         onComplete();
       } finally {
         reader.releaseLock();
+        this.activeAbortControllers.delete(controller);
       }
     } catch (error) {
       clearTimeout(timeoutId);
+      this.activeAbortControllers.delete(controller);
       if (error instanceof Error && error.name === "AbortError") {
+        if (this._killed) {
+          throw new AIServiceError(
+            "AI operations are disabled (killswitch active)",
+            "UNKNOWN" /* UNKNOWN */,
+            false
+          );
+        }
+        if (!this.activeAbortControllers.has(controller)) {
+          throw new AIServiceError(
+            "Request cancelled",
+            "UNKNOWN" /* UNKNOWN */,
+            false
+          );
+        }
         throw new AIServiceError(
           "Request timed out - try with shorter content or check your connection",
           "TIMEOUT" /* TIMEOUT */,
@@ -828,6 +917,28 @@ var AIService = class {
         false
       );
     }
+  }
+  requestWithAbort(options, signal) {
+    return new Promise((resolve, reject) => {
+      if (signal.aborted) {
+        reject(new DOMException("Request cancelled", "AbortError"));
+        return;
+      }
+      const onAbort = () => {
+        reject(new DOMException("Request cancelled", "AbortError"));
+      };
+      signal.addEventListener("abort", onAbort, { once: true });
+      (0, import_obsidian2.requestUrl)(options).then(
+        (response) => {
+          signal.removeEventListener("abort", onAbort);
+          resolve(response);
+        },
+        (error) => {
+          signal.removeEventListener("abort", onAbort);
+          reject(error);
+        }
+      );
+    });
   }
   async executeWithRetry(operation) {
     let lastError;
@@ -1441,6 +1552,8 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
     this.organizeIntervals = /* @__PURE__ */ new Map();
     // Intervals for auto-update (per folder)
     this.autoUpdateIntervals = /* @__PURE__ */ new Map();
+    // Status bar item for killswitch indicator
+    this.killswitchStatusBarItem = null;
   }
   // ============================================
   // FOLDER DETECTION & SETTINGS HELPERS
@@ -1560,6 +1673,11 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
   async onload() {
     await this.loadSettings();
     this.aiService = new AIService(this.settings);
+    if (this.settings.killswitchActive) {
+      this.aiService.kill();
+    }
+    this.killswitchStatusBarItem = this.addStatusBarItem();
+    this.updateKillswitchStatusBar();
     this.addRibbonIcon("rabbit", "Enter Wonderland", () => {
       this.openPromptModal();
     });
@@ -1733,6 +1851,21 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
         }
       }
     });
+    this.addCommand({
+      id: "toggle-killswitch",
+      name: "Toggle AI killswitch (emergency stop)",
+      callback: async () => {
+        await this.toggleKillswitch();
+      }
+    });
+    this.registerDomEvent(document, "keydown", (evt) => {
+      if (evt.key === "Escape" && this.aiService.hasActiveRequests) {
+        const cancelled = this.aiService.cancelAll();
+        if (cancelled) {
+          new import_obsidian3.Notice("AI request cancelled");
+        }
+      }
+    });
     this.registerDomEvent(document, "click", async (evt) => {
       await this.handleLinkClick(evt);
     }, { capture: true });
@@ -1834,14 +1967,9 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
   }
   // Set up intervals for all configured folders
   setupAllIntervals() {
-    for (const interval of this.organizeIntervals.values()) {
-      window.clearInterval(interval);
-    }
-    for (const interval of this.autoUpdateIntervals.values()) {
-      window.clearInterval(interval);
-    }
-    this.organizeIntervals.clear();
-    this.autoUpdateIntervals.clear();
+    this.clearAllIntervals();
+    if (this.settings.killswitchActive)
+      return;
     for (const folder of this.settings.wonderlandFolders) {
       this.setupFolderIntervals(folder);
     }
@@ -2653,7 +2781,52 @@ Which folder should this note go in? Respond with ONLY the folder name.`;
     folders.sort();
     return folders;
   }
+  // ============================================
+  // KILLSWITCH
+  // ============================================
+  async toggleKillswitch() {
+    if (this.settings.killswitchActive) {
+      this.settings.killswitchActive = false;
+      this.aiService.revive();
+      this.setupAllIntervals();
+      this.updateKillswitchStatusBar();
+      await this.saveData(this.settings);
+      new import_obsidian3.Notice("AI killswitch OFF - AI operations resumed");
+    } else {
+      this.settings.killswitchActive = true;
+      this.aiService.kill();
+      this.clearAllIntervals();
+      this.updateKillswitchStatusBar();
+      await this.saveData(this.settings);
+      new import_obsidian3.Notice("AI killswitch ON - All AI operations stopped");
+    }
+  }
+  clearAllIntervals() {
+    for (const interval of this.organizeIntervals.values()) {
+      window.clearInterval(interval);
+    }
+    for (const interval of this.autoUpdateIntervals.values()) {
+      window.clearInterval(interval);
+    }
+    this.organizeIntervals.clear();
+    this.autoUpdateIntervals.clear();
+  }
+  updateKillswitchStatusBar() {
+    if (!this.killswitchStatusBarItem)
+      return;
+    if (this.settings.killswitchActive) {
+      this.killswitchStatusBarItem.setText("AI: OFF");
+      this.killswitchStatusBarItem.style.color = "var(--text-error)";
+      this.killswitchStatusBarItem.style.fontWeight = "bold";
+    } else {
+      this.killswitchStatusBarItem.setText("");
+    }
+  }
   validateSettings() {
+    if (this.settings.killswitchActive) {
+      new import_obsidian3.Notice("AI killswitch is active - all AI operations are disabled");
+      return false;
+    }
     if (this.settings.aiProvider !== "ollama" && !this.settings.apiKey) {
       new import_obsidian3.Notice("Please configure your API key in settings");
       return false;
