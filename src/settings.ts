@@ -17,6 +17,30 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     // Header
     new Setting(containerEl).setName('Wonderland settings').setHeading();
 
+    // Killswitch - prominent emergency stop
+    const killswitchContainer = containerEl.createDiv({ cls: 'wonderland-killswitch' });
+    killswitchContainer.style.cssText = `
+      padding: 12px 16px;
+      margin-bottom: 1.5em;
+      border-radius: 8px;
+      border: 2px solid ${this.plugin.settings.killswitchActive ? 'var(--text-error)' : 'var(--background-modifier-border)'};
+      background: ${this.plugin.settings.killswitchActive ? 'var(--background-modifier-error)' : 'var(--background-secondary)'};
+    `;
+
+    new Setting(killswitchContainer)
+      .setName('AI Killswitch')
+      .setDesc(this.plugin.settings.killswitchActive
+        ? 'All AI operations are STOPPED. Toggle off to resume.'
+        : 'Emergency stop for all AI operations (cancels in-flight requests, stops all automation)')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(this.plugin.settings.killswitchActive)
+          .onChange(async () => {
+            await this.plugin.toggleKillswitch();
+            this.display();
+          })
+      );
+
     // AI Provider Section
     new Setting(containerEl).setName('AI configuration').setHeading();
 

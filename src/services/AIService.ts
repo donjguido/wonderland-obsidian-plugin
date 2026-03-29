@@ -55,6 +55,8 @@ const DEFAULT_RETRY_CONFIG: RetryConfig = {
 export class AIService {
   private settings: EvergreenAISettings;
   private retryConfig: RetryConfig;
+  private activeAbortControllers: Set<AbortController> = new Set();
+  private _killed = false;
 
   constructor(settings: EvergreenAISettings, retryConfig?: Partial<RetryConfig>) {
     this.settings = settings;
@@ -63,6 +65,55 @@ export class AIService {
 
   updateSettings(settings: EvergreenAISettings): void {
     this.settings = settings;
+  }
+
+  get killed(): boolean {
+    return this._killed;
+  }
+
+  /**
+   * Activate killswitch: abort all in-flight requests and block new ones.
+   */
+  kill(): void {
+    this._killed = true;
+    for (const controller of this.activeAbortControllers) {
+      controller.abort();
+    }
+    this.activeAbortControllers.clear();
+  }
+
+  /**
+   * Deactivate killswitch: allow new requests again.
+   */
+  revive(): void {
+    this._killed = false;
+  }
+
+  /**
+   * Cancel all in-flight requests without blocking future ones.
+   * Returns true if any requests were cancelled.
+   */
+  cancelAll(): boolean {
+    if (this.activeAbortControllers.size === 0) return false;
+    for (const controller of this.activeAbortControllers) {
+      controller.abort();
+    }
+    this.activeAbortControllers.clear();
+    return true;
+  }
+
+  get hasActiveRequests(): boolean {
+    return this.activeAbortControllers.size > 0;
+  }
+
+  private ensureAlive(): void {
+    if (this._killed) {
+      throw new AIServiceError(
+        'AI operations are disabled (killswitch active)',
+        AIErrorCode.UNKNOWN,
+        false
+      );
+    }
   }
 
   async testConnection(): Promise<boolean> {
@@ -76,6 +127,8 @@ export class AIService {
   }
 
   async generate(prompt: string, systemPrompt: string): Promise<AIResponse> {
+    this.ensureAlive();
+
     // Check for Ollama on mobile (won't work - localhost isn't accessible)
     if (Platform.isMobile && this.settings.aiProvider === 'ollama') {
       throw new AIServiceError(
@@ -91,13 +144,16 @@ export class AIService {
       debugLog(' Making request to:', endpoint);
       debugLog(' Using model:', body.model);
 
+      // Create an AbortController so non-streaming requests can be cancelled too
+      const controller = new AbortController();
+      this.activeAbortControllers.add(controller);
+
       try {
-        const response = await requestUrl({
-          url: endpoint,
-          method: 'POST',
-          headers,
-          body: JSON.stringify(body),
-        });
+        // Race the request against the abort signal
+        const response = await this.requestWithAbort(
+          { url: endpoint, method: 'POST', headers, body: JSON.stringify(body) },
+          controller.signal
+        );
 
         debugLog(' Response status:', response.status);
 
@@ -108,6 +164,15 @@ export class AIService {
 
         return this.parseResponse(response.json);
       } catch (error) {
+        // Handle abort/cancellation
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new AIServiceError(
+            'Request cancelled',
+            AIErrorCode.UNKNOWN,
+            false
+          );
+        }
+
         // Handle network errors specifically
         if (this.isNetworkError(error)) {
           throw new AIServiceError(
@@ -129,6 +194,8 @@ export class AIService {
           AIErrorCode.UNKNOWN,
           false
         );
+      } finally {
+        this.activeAbortControllers.delete(controller);
       }
     });
   }
@@ -139,6 +206,8 @@ export class AIService {
     onChunk: (chunk: string) => void,
     onComplete: () => void
   ): Promise<void> {
+    this.ensureAlive();
+
     // On mobile, streaming is not well supported - fall back to non-streaming
     // Also check for Ollama on mobile (won't work - localhost isn't accessible)
     if (Platform.isMobile) {
@@ -160,13 +229,15 @@ export class AIService {
     // Use requestUrl for streaming - Obsidian's API handles it
     const { endpoint, headers, body } = this.buildRequest(prompt, systemPrompt, true);
 
+    // Create an AbortController for cancellation support
+    const controller = new AbortController();
+    this.activeAbortControllers.add(controller);
+
     try {
-      const response = await requestUrl({
-        url: endpoint,
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-      });
+      const response = await this.requestWithAbort(
+        { url: endpoint, method: 'POST', headers, body: JSON.stringify(body) },
+        controller.signal
+      );
 
       if (response.status >= 400) {
         throw this.parseErrorResponse(response.status, response.json);
@@ -199,6 +270,15 @@ export class AIService {
 
       onComplete();
     } catch (error) {
+      // Handle abort/cancellation
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new AIServiceError(
+          'Request cancelled',
+          AIErrorCode.UNKNOWN,
+          false
+        );
+      }
+
       if (error instanceof AIServiceError) {
         throw error;
       }
@@ -216,7 +296,37 @@ export class AIService {
         AIErrorCode.UNKNOWN,
         false
       );
+    } finally {
+      this.activeAbortControllers.delete(controller);
     }
+  }
+
+  private requestWithAbort(
+    options: { url: string; method: string; headers: Record<string, string>; body: string },
+    signal: AbortSignal
+  ): Promise<{ status: number; json: Record<string, unknown>; text: string }> {
+    return new Promise((resolve, reject) => {
+      if (signal.aborted) {
+        reject(new DOMException('Request cancelled', 'AbortError'));
+        return;
+      }
+
+      const onAbort = () => {
+        reject(new DOMException('Request cancelled', 'AbortError'));
+      };
+      signal.addEventListener('abort', onAbort, { once: true });
+
+      requestUrl(options).then(
+        (response) => {
+          signal.removeEventListener('abort', onAbort);
+          resolve(response);
+        },
+        (error) => {
+          signal.removeEventListener('abort', onAbort);
+          reject(error);
+        }
+      );
+    });
   }
 
   private async executeWithRetry<T>(operation: () => Promise<T>): Promise<T> {

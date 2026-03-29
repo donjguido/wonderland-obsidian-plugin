@@ -51,6 +51,8 @@ export default class EvergreenAIPlugin extends Plugin {
   private organizeIntervals: Map<string, number> = new Map();
   // Intervals for auto-update (per folder)
   private autoUpdateIntervals: Map<string, number> = new Map();
+  // Status bar item for killswitch indicator
+  private killswitchStatusBarItem: HTMLElement | null = null;
 
   // ============================================
   // FOLDER DETECTION & SETTINGS HELPERS
@@ -194,6 +196,15 @@ export default class EvergreenAIPlugin extends Plugin {
     await this.loadSettings();
 
     this.aiService = new AIService(this.settings);
+
+    // Restore killswitch state from settings
+    if (this.settings.killswitchActive) {
+      this.aiService.kill();
+    }
+
+    // Add killswitch status bar indicator
+    this.killswitchStatusBarItem = this.addStatusBarItem();
+    this.updateKillswitchStatusBar();
 
     // Add ribbon icon (rabbit for wonderland theme)
     this.addRibbonIcon('rabbit', 'Enter Wonderland', () => {
@@ -416,6 +427,25 @@ export default class EvergreenAIPlugin extends Plugin {
       },
     });
 
+    // Add killswitch toggle command
+    this.addCommand({
+      id: 'toggle-killswitch',
+      name: 'Toggle AI killswitch (emergency stop)',
+      callback: async () => {
+        await this.toggleKillswitch();
+      },
+    });
+
+    // Register Escape key handler to cancel in-flight AI requests
+    this.registerDomEvent(document, 'keydown', (evt: KeyboardEvent) => {
+      if (evt.key === 'Escape' && this.aiService.hasActiveRequests) {
+        const cancelled = this.aiService.cancelAll();
+        if (cancelled) {
+          new Notice('AI request cancelled');
+        }
+      }
+    });
+
     // Register click handler for placeholder links (legacy, kept for reading mode)
     this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
       void this.handleLinkClick(evt);
@@ -561,15 +591,10 @@ export default class EvergreenAIPlugin extends Plugin {
 
   // Set up intervals for all configured folders
   setupAllIntervals(): void {
-    // Clear existing intervals
-    for (const interval of this.organizeIntervals.values()) {
-      window.clearInterval(interval);
-    }
-    for (const interval of this.autoUpdateIntervals.values()) {
-      window.clearInterval(interval);
-    }
-    this.organizeIntervals.clear();
-    this.autoUpdateIntervals.clear();
+    this.clearAllIntervals();
+
+    // Don't start intervals if killswitch is active
+    if (this.settings.killswitchActive) return;
 
     // Set up intervals for each folder
     for (const folder of this.settings.wonderlandFolders) {
@@ -1608,7 +1633,57 @@ ${response.content}
     return folders;
   }
 
+  // ============================================
+  // KILLSWITCH
+  // ============================================
+
+  async toggleKillswitch(): Promise<void> {
+    if (this.settings.killswitchActive) {
+      // Deactivate killswitch
+      this.settings.killswitchActive = false;
+      this.aiService.revive();
+      this.setupAllIntervals();
+      this.updateKillswitchStatusBar();
+      await this.saveData(this.settings);
+      new Notice('AI killswitch OFF - AI operations resumed');
+    } else {
+      // Activate killswitch
+      this.settings.killswitchActive = true;
+      this.aiService.kill();
+      this.clearAllIntervals();
+      this.updateKillswitchStatusBar();
+      await this.saveData(this.settings);
+      new Notice('AI killswitch ON - All AI operations stopped');
+    }
+  }
+
+  private clearAllIntervals(): void {
+    for (const interval of this.organizeIntervals.values()) {
+      window.clearInterval(interval);
+    }
+    for (const interval of this.autoUpdateIntervals.values()) {
+      window.clearInterval(interval);
+    }
+    this.organizeIntervals.clear();
+    this.autoUpdateIntervals.clear();
+  }
+
+  private updateKillswitchStatusBar(): void {
+    if (!this.killswitchStatusBarItem) return;
+    if (this.settings.killswitchActive) {
+      this.killswitchStatusBarItem.setText('AI: OFF');
+      this.killswitchStatusBarItem.style.color = 'var(--text-error)';
+      this.killswitchStatusBarItem.style.fontWeight = 'bold';
+    } else {
+      this.killswitchStatusBarItem.setText('');
+    }
+  }
+
   validateSettings(): boolean {
+    if (this.settings.killswitchActive) {
+      new Notice('AI killswitch is active - all AI operations are disabled');
+      return false;
+    }
     if (this.settings.aiProvider !== 'ollama' && !this.settings.apiKey) {
       new Notice('Please configure your API key in settings');
       return false;
