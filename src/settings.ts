@@ -1,6 +1,6 @@
-import { App, PluginSettingTab, Setting, TFolder, Platform } from 'obsidian';
+import { App, PluginSettingTab, Setting, Platform } from 'obsidian';
 import type EvergreenAIPlugin from './main';
-import { AIProvider, PROVIDER_DEFAULTS, TitleStyle, FolderGoal, WonderlandFolderSettings, createFolderSettings } from './types';
+import { AIProvider, PROVIDER_DEFAULTS, TitleStyle, FolderGoal, createFolderSettings } from './types';
 
 export class EvergreenAISettingTab extends PluginSettingTab {
   plugin: EvergreenAIPlugin;
@@ -15,7 +15,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     containerEl.empty();
 
     // Header
-    containerEl.createEl('h1', { text: 'Wonderland Settings' });
+    new Setting(containerEl).setName('Wonderland settings').setHeading();
 
     // Killswitch - prominent emergency stop
     const killswitchContainer = containerEl.createDiv({ cls: 'wonderland-killswitch' });
@@ -42,10 +42,10 @@ export class EvergreenAISettingTab extends PluginSettingTab {
       );
 
     // AI Provider Section
-    containerEl.createEl('h2', { text: 'AI Configuration' });
+    new Setting(containerEl).setName('AI configuration').setHeading();
 
     new Setting(containerEl)
-      .setName('AI Provider')
+      .setName('AI provider')
       .setDesc('Select your AI provider')
       .addDropdown((dropdown) =>
         dropdown
@@ -73,17 +73,16 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     // Show warning for Ollama on mobile
     if (Platform.isMobile && this.plugin.settings.aiProvider === 'ollama') {
       const warningEl = containerEl.createDiv({ cls: 'wonderland-mobile-warning' });
-      warningEl.style.cssText = 'background: var(--background-modifier-error); color: var(--text-on-accent); padding: 12px; border-radius: 6px; margin-bottom: 1em;';
-      warningEl.createEl('strong', { text: '⚠️ Ollama not supported on mobile' });
+      warningEl.createEl('strong', { text: 'Ollama not supported on mobile' });
       warningEl.createEl('p', {
         text: 'Ollama runs locally and cannot be accessed from mobile devices. Please use OpenAI, Anthropic, or a cloud-based custom endpoint instead.',
-      }).style.marginBottom = '0';
+      });
     }
 
     // API Key (not for Ollama)
     if (this.plugin.settings.aiProvider !== 'ollama') {
       new Setting(containerEl)
-        .setName('API Key')
+        .setName('API key')
         .setDesc('Your API key (stored locally, never sent anywhere except the AI provider)')
         .addText((text) =>
           text
@@ -105,7 +104,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     // Custom endpoint
     if (this.plugin.settings.aiProvider === 'custom' || this.plugin.settings.aiProvider === 'ollama') {
       new Setting(containerEl)
-        .setName('API Endpoint')
+        .setName('API endpoint')
         .setDesc('The API endpoint URL')
         .addText((text) =>
           text
@@ -154,7 +153,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
 
     // Advanced AI settings
     new Setting(containerEl)
-      .setName('Max Tokens')
+      .setName('Max tokens')
       .setDesc('Maximum tokens in AI response (affects note length)')
       .addSlider((slider) =>
         slider
@@ -183,11 +182,11 @@ export class EvergreenAISettingTab extends PluginSettingTab {
 
     // Test Connection Button
     new Setting(containerEl)
-      .setName('Test AI Connection')
+      .setName('Test AI connection')
       .setDesc('Verify your API configuration is working')
       .addButton((button) =>
         button
-          .setButtonText('Test Connection')
+          .setButtonText('Test connection')
           .setCta()
           .onClick(async () => {
             button.setButtonText('Testing...');
@@ -196,13 +195,13 @@ export class EvergreenAISettingTab extends PluginSettingTab {
               await this.plugin.aiService.testConnection();
               button.setButtonText('Connected!');
               setTimeout(() => {
-                button.setButtonText('Test Connection');
+                button.setButtonText('Test connection');
                 button.setDisabled(false);
               }, 2000);
-            } catch (error) {
-              button.setButtonText('Failed - Check Settings');
+            } catch {
+              button.setButtonText('Failed - check settings');
               setTimeout(() => {
-                button.setButtonText('Test Connection');
+                button.setButtonText('Test connection');
                 button.setDisabled(false);
               }, 3000);
             }
@@ -212,7 +211,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     // ============================================
     // GLOBAL INSTRUCTIONS SECTION
     // ============================================
-    containerEl.createEl('h2', { text: 'Global Instructions' });
+    new Setting(containerEl).setName('Global instructions').setHeading();
 
     containerEl.createEl('p', {
       text: 'Instructions that apply to all Wonderland folders. Folder-specific instructions will be applied after these.',
@@ -221,7 +220,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName('Global instructions')
-      .setDesc('These instructions will be applied to ALL notes generated in any Wonderland folder')
+      .setDesc('These instructions will be applied to all notes generated in any Wonderland folder')
       .addTextArea((text) =>
         text
           .setPlaceholder('e.g., "Always use British English spelling" or "Include practical examples in every note"')
@@ -232,17 +231,13 @@ export class EvergreenAISettingTab extends PluginSettingTab {
           })
       )
       .then((setting) => {
-        const textarea = setting.controlEl.querySelector('textarea');
-        if (textarea) {
-          textarea.style.width = '100%';
-          textarea.style.minHeight = '80px';
-        }
+        setting.settingEl.addClass('wonderland-settings-textarea');
       });
 
     // ============================================
     // WONDERLAND FOLDERS SECTION
     // ============================================
-    containerEl.createEl('h2', { text: 'Wonderland Folders' });
+    new Setting(containerEl).setName('Wonderland folders').setHeading();
 
     containerEl.createEl('p', {
       text: 'Select existing folders or type a name to create new wonderlands of knowledge. Each folder can have its own settings.',
@@ -278,22 +273,13 @@ export class EvergreenAISettingTab extends PluginSettingTab {
       const folder = this.plugin.settings.wonderlandFolders[i];
       const isSelected = i === this.plugin.settings.selectedFolderIndex;
 
-      const folderItem = foldersContainer.createDiv({ cls: 'wonderland-folder-item' });
-      folderItem.style.display = 'flex';
-      folderItem.style.alignItems = 'center';
-      folderItem.style.justifyContent = 'space-between';
-      folderItem.style.padding = '8px 12px';
-      folderItem.style.marginBottom = '4px';
-      folderItem.style.backgroundColor = isSelected ? 'var(--interactive-accent)' : 'var(--background-secondary)';
-      folderItem.style.color = isSelected ? 'var(--text-on-accent)' : 'inherit';
-      folderItem.style.borderRadius = '6px';
-      folderItem.style.cursor = 'pointer';
+      const folderItem = foldersContainer.createDiv({
+        cls: `wonderland-folder-item${isSelected ? ' is-selected' : ''}`,
+      });
 
       const folderInfo = folderItem.createDiv();
-      folderInfo.createSpan({ text: '📁 ' });
-      const folderName = folderInfo.createSpan({ text: folder.path });
-      folderName.style.fontFamily = 'var(--font-monospace)';
-      folderName.style.fontWeight = isSelected ? 'bold' : 'normal';
+      folderInfo.createSpan({ text: ' ' });
+      folderInfo.createSpan({ text: folder.path, cls: 'folder-name' });
 
       if (isSelected) {
         folderInfo.createSpan({ text: ' (editing)', cls: 'setting-item-description' });
@@ -307,13 +293,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
       });
 
       // Remove button
-      const removeBtn = folderItem.createEl('button', { text: '×' });
-      removeBtn.style.marginLeft = '8px';
-      removeBtn.style.padding = '2px 8px';
-      removeBtn.style.cursor = 'pointer';
-      removeBtn.style.backgroundColor = 'transparent';
-      removeBtn.style.border = 'none';
-      removeBtn.style.color = isSelected ? 'var(--text-on-accent)' : 'var(--text-muted)';
+      const removeBtn = folderItem.createEl('button', { text: '\u00d7', cls: 'remove-btn' });
       removeBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         this.plugin.settings.wonderlandFolders.splice(i, 1);
@@ -387,8 +367,8 @@ export class EvergreenAISettingTab extends PluginSettingTab {
             // Create folder if it doesn't exist
             try {
               await this.plugin.ensureFolderExists(newFolderName);
-            } catch (e) {
-              console.error('Failed to create folder:', e);
+            } catch (err) {
+              console.error('Failed to create folder:', err);
               return;
             }
 
@@ -406,10 +386,10 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     const folderSettings = this.plugin.selectedFolderSettings;
     if (!folderSettings) return;
 
-    containerEl.createEl('h2', { text: `Settings for: ${folderSettings.path}` });
+    new Setting(containerEl).setName(`Settings for: ${folderSettings.path}`).setHeading();
 
     // Folder Goal Section
-    containerEl.createEl('h3', { text: 'Folder Goal' });
+    new Setting(containerEl).setName('Folder goal').setHeading();
 
     new Setting(containerEl)
       .setName('Content focus')
@@ -417,12 +397,12 @@ export class EvergreenAISettingTab extends PluginSettingTab {
       .addDropdown((dropdown) =>
         dropdown
           .addOptions({
-            learn: '📚 Learning - Understanding and retention',
-            action: '✅ Action-Oriented - Practical steps and how-to guides',
-            reflect: '🤔 Critical Reflection - Deep thinking and analysis',
-            research: '🔬 Research - Evidence-based with citations',
-            creative: '🎨 Creative - Imaginative connections',
-            custom: '⚙️ Custom - Define your own focus',
+            learn: 'Learning - Understanding and retention',
+            action: 'Action-oriented - Practical steps and how-to guides',
+            reflect: 'Critical reflection - Deep thinking and analysis',
+            research: 'Research - Evidence-based with citations',
+            creative: 'Creative - Imaginative connections',
+            custom: 'Custom - Define your own focus',
           })
           .setValue(folderSettings.folderGoal || 'learn')
           .onChange(async (value: FolderGoal) => {
@@ -447,16 +427,12 @@ export class EvergreenAISettingTab extends PluginSettingTab {
             })
         )
         .then((setting) => {
-          const textarea = setting.controlEl.querySelector('textarea');
-          if (textarea) {
-            textarea.style.width = '100%';
-            textarea.style.minHeight = '60px';
-          }
+          setting.settingEl.addClass('wonderland-settings-textarea-short');
         });
     }
 
     // Custom Instructions
-    containerEl.createEl('h3', { text: 'Custom Instructions' });
+    new Setting(containerEl).setName('Custom instructions').setHeading();
 
     new Setting(containerEl)
       .setName('Custom instructions for this Wonderland')
@@ -471,15 +447,11 @@ export class EvergreenAISettingTab extends PluginSettingTab {
           })
       )
       .then((setting) => {
-        const textarea = setting.controlEl.querySelector('textarea');
-        if (textarea) {
-          textarea.style.width = '100%';
-          textarea.style.minHeight = '80px';
-        }
+        setting.settingEl.addClass('wonderland-settings-textarea');
       });
 
     // External Links Section
-    containerEl.createEl('h3', { text: 'External References' });
+    new Setting(containerEl).setName('External references').setHeading();
 
     new Setting(containerEl)
       .setName('Include external links')
@@ -511,7 +483,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     }
 
     // Personalized Suggestions Section
-    containerEl.createEl('h3', { text: 'Personalized Suggestions' });
+    new Setting(containerEl).setName('Personalized suggestions').setHeading();
 
     new Setting(containerEl)
       .setName('Customize "Down the rabbit hole" suggestions')
@@ -540,18 +512,15 @@ export class EvergreenAISettingTab extends PluginSettingTab {
             })
         )
         .then((setting) => {
-          const input = setting.controlEl.querySelector('input');
-          if (input) {
-            input.style.width = '100%';
-          }
+          setting.settingEl.addClass('wonderland-settings-input');
         });
     }
 
     // Note Generation Settings
-    containerEl.createEl('h3', { text: 'Note Generation' });
+    new Setting(containerEl).setName('Note generation').setHeading();
 
     new Setting(containerEl)
-      .setName('Title Style')
+      .setName('Title style')
       .setDesc('How to format note titles')
       .addDropdown((dropdown) =>
         dropdown
@@ -568,7 +537,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
       );
 
     new Setting(containerEl)
-      .setName('Include Metadata')
+      .setName('Include metadata')
       .setDesc('Add YAML frontmatter with generation info')
       .addToggle((toggle) =>
         toggle
@@ -580,10 +549,10 @@ export class EvergreenAISettingTab extends PluginSettingTab {
       );
 
     // Placeholder Links Section
-    containerEl.createEl('h3', { text: 'Placeholder Links' });
+    new Setting(containerEl).setName('Placeholder links').setHeading();
 
     new Setting(containerEl)
-      .setName('Max Placeholder Links')
+      .setName('Max placeholder links')
       .setDesc('Maximum concept links to generate per note')
       .addSlider((slider) =>
         slider
@@ -633,7 +602,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
       );
 
     // Auto-Organization Section
-    containerEl.createEl('h3', { text: 'Auto-Organization' });
+    new Setting(containerEl).setName('Auto-organization').setHeading();
 
     new Setting(containerEl)
       .setName('Auto-classify new notes')
@@ -724,19 +693,19 @@ export class EvergreenAISettingTab extends PluginSettingTab {
         .setDesc('Manually trigger organization')
         .addButton((button) =>
           button
-            .setButtonText('Organize Folder')
+            .setButtonText('Organize folder')
             .onClick(async () => {
               button.setButtonText('Organizing...');
               button.setDisabled(true);
               await this.plugin.organizeWonderlandFolder(folderSettings);
-              button.setButtonText('Organize Folder');
+              button.setButtonText('Organize folder');
               button.setDisabled(false);
             })
         );
     }
 
     // Knowledge Enrichment Section
-    containerEl.createEl('h3', { text: 'Knowledge Enrichment' });
+    new Setting(containerEl).setName('Knowledge enrichment').setHeading();
 
     new Setting(containerEl)
       .setName('Auto-update notes (time-based)')
@@ -817,18 +786,18 @@ export class EvergreenAISettingTab extends PluginSettingTab {
       .setDesc('Manually trigger enrichment of all notes in this folder')
       .addButton((button) =>
         button
-          .setButtonText('Enrich All Notes')
+          .setButtonText('Enrich all notes')
           .onClick(async () => {
             button.setButtonText('Enriching...');
             button.setDisabled(true);
             await this.plugin.autoUpdateFolderNotes(folderSettings);
-            button.setButtonText('Enrich All Notes');
+            button.setButtonText('Enrich all notes');
             button.setDisabled(false);
           })
       );
 
     // Blacklist management
-    containerEl.createEl('h4', { text: 'Enrichment Blacklist' });
+    new Setting(containerEl).setName('Enrichment blacklist').setHeading();
 
     containerEl.createEl('p', {
       text: 'Notes on this list will be excluded from automatic enrichment. Use the "Toggle enrichment blacklist" command to add/remove notes.',
@@ -838,24 +807,20 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     const blacklistCount = folderSettings.enrichBlacklist?.length || 0;
     if (blacklistCount > 0) {
       const blacklistContainer = containerEl.createDiv({ cls: 'wonderland-blacklist-container' });
-      blacklistContainer.style.cssText = 'background: var(--background-secondary); padding: 12px; border-radius: 6px; margin-bottom: 1em;';
 
       blacklistContainer.createEl('p', {
         text: `${blacklistCount} note${blacklistCount > 1 ? 's' : ''} blacklisted:`,
-      }).style.marginTop = '0';
+      });
 
       const blacklistList = blacklistContainer.createEl('ul');
-      blacklistList.style.cssText = 'margin: 0.5em 0; padding-left: 1.5em;';
 
       for (const notePath of folderSettings.enrichBlacklist) {
         const item = blacklistList.createEl('li');
-        item.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;';
 
         const noteBasename = notePath.split('/').pop()?.replace('.md', '') || notePath;
         item.createSpan({ text: noteBasename });
 
-        const removeBtn = item.createEl('button', { text: '×' });
-        removeBtn.style.cssText = 'padding: 0 6px; margin-left: 8px; cursor: pointer;';
+        const removeBtn = item.createEl('button', { text: '\u00d7', cls: 'remove-btn' });
         removeBtn.addEventListener('click', async () => {
           folderSettings.enrichBlacklist = folderSettings.enrichBlacklist.filter(p => p !== notePath);
           await this.plugin.saveSettings();
@@ -867,7 +832,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
         .setName('Clear blacklist')
         .addButton((button) =>
           button
-            .setButtonText('Clear All')
+            .setButtonText('Clear all')
             .onClick(async () => {
               folderSettings.enrichBlacklist = [];
               await this.plugin.saveSettings();
@@ -882,7 +847,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     }
 
     // Rabbit Holes Index Section
-    containerEl.createEl('h3', { text: 'Rabbit Holes Index' });
+    new Setting(containerEl).setName('Rabbit holes index').setHeading();
 
     containerEl.createEl('p', {
       text: 'The Rabbit Holes Index shows all unresolved links (unexplored paths) in this Wonderland.',
@@ -890,7 +855,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     });
 
     new Setting(containerEl)
-      .setName('Enable Rabbit Holes Index')
+      .setName('Enable rabbit holes index')
       .setDesc('Create and maintain an index of all unresolved links')
       .addToggle((toggle) =>
         toggle
@@ -904,7 +869,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
 
     if (folderSettings.enableRabbitHolesIndex) {
       new Setting(containerEl)
-        .setName('Auto-update Rabbit Holes')
+        .setName('Auto-update rabbit holes')
         .setDesc('Update the index each time a new note is generated')
         .addToggle((toggle) =>
           toggle
@@ -917,16 +882,16 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     }
 
     new Setting(containerEl)
-      .setName('Generate Rabbit Holes Index')
-      .setDesc('Create or update the Rabbit Holes index')
+      .setName('Generate rabbit holes index')
+      .setDesc('Create or update the rabbit holes index')
       .addButton((button) =>
         button
-          .setButtonText('Generate Index')
+          .setButtonText('Generate index')
           .onClick(async () => {
             button.setButtonText('Generating...');
             button.setDisabled(true);
             await this.plugin.generateRabbitHolesIndex(folderSettings);
-            button.setButtonText('Generate Index');
+            button.setButtonText('Generate index');
             button.setDisabled(false);
           })
       );

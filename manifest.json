@@ -1,7 +1,7 @@
 {
   "id": "wonderland",
   "name": "Wonderland",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "minAppVersion": "1.4.0",
   "description": "Go down the rabbit hole of knowledge. AI generates linked notes that expand on click, letting you explore ideas endlessly. Features auto-organization, knowledge enrichment, and customizable Wonderland folders.",
   "author": "donjguido",
