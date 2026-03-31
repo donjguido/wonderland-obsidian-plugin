@@ -321,9 +321,9 @@ export class AIService {
           signal.removeEventListener('abort', onAbort);
           resolve(response);
         },
-        (error) => {
+        (error: unknown) => {
           signal.removeEventListener('abort', onAbort);
-          reject(error);
+          reject(error instanceof Error ? error : new Error(String(error)));
         }
       );
     });
@@ -407,12 +407,12 @@ export class AIService {
 
     // Try to extract error message from response body
     const errorObj = body.error as Record<string, unknown> | undefined;
-    if (errorObj?.message) {
-      message = String(errorObj.message);
-    } else if (body.message) {
-      message = String(body.message);
-    } else if (body.detail) {
-      message = String(body.detail);
+    if (errorObj?.message && typeof errorObj.message === 'string') {
+      message = errorObj.message;
+    } else if (body.message && typeof body.message === 'string') {
+      message = body.message;
+    } else if (body.detail && typeof body.detail === 'string') {
+      message = body.detail;
     }
 
     // Parse based on status code

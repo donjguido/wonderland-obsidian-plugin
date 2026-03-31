@@ -15,7 +15,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     containerEl.empty();
 
     // Header
-    new Setting(containerEl).setName('Wonderland settings').setHeading();
+    new Setting(containerEl).setName('General').setHeading();
 
     // Killswitch - prominent emergency stop
     const killswitchContainer = containerEl.createDiv({ cls: 'wonderland-killswitch' });
@@ -28,7 +28,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     `;
 
     new Setting(killswitchContainer)
-      .setName('AI Killswitch')
+      .setName('AI killswitch')
       .setDesc(this.plugin.settings.killswitchActive
         ? 'All AI operations are STOPPED. Toggle off to resume.'
         : 'Emergency stop for all AI operations (cancels in-flight requests, stops all automation)')
@@ -52,8 +52,8 @@ export class EvergreenAISettingTab extends PluginSettingTab {
           .addOptions({
             openai: 'OpenAI',
             anthropic: 'Anthropic (Claude)',
-            ollama: 'Ollama (Local)',
-            custom: 'Custom Endpoint',
+            ollama: 'Ollama (local)',
+            custom: 'Custom endpoint',
           })
           .setValue(this.plugin.settings.aiProvider)
           .onChange(async (value: AIProvider) => {
@@ -214,13 +214,13 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     new Setting(containerEl).setName('Global instructions').setHeading();
 
     containerEl.createEl('p', {
-      text: 'Instructions that apply to all Wonderland folders. Folder-specific instructions will be applied after these.',
+      text: 'Instructions that apply to all folders. Folder-specific instructions will be applied after these.',
       cls: 'setting-item-description',
     });
 
     new Setting(containerEl)
       .setName('Global instructions')
-      .setDesc('These instructions will be applied to all notes generated in any Wonderland folder')
+      .setDesc('These instructions will be applied to all notes generated in any folder')
       .addTextArea((text) =>
         text
           .setPlaceholder('e.g., "Always use British English spelling" or "Include practical examples in every note"')
@@ -237,10 +237,10 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     // ============================================
     // WONDERLAND FOLDERS SECTION
     // ============================================
-    new Setting(containerEl).setName('Wonderland folders').setHeading();
+    new Setting(containerEl).setName('Folders').setHeading();
 
     containerEl.createEl('p', {
-      text: 'Select existing folders or type a name to create new wonderlands of knowledge. Each folder can have its own settings.',
+      text: 'Select existing folders or type a name to create new folders. Each folder can have its own settings.',
       cls: 'setting-item-description',
     });
 
@@ -263,7 +263,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
 
     if (this.plugin.settings.wonderlandFolders.length === 0) {
       foldersContainer.createEl('p', {
-        text: 'No Wonderland folders configured yet. Add one below.',
+        text: 'No folders configured yet. Add one below.',
         cls: 'setting-item-description',
       });
       return;
@@ -286,23 +286,21 @@ export class EvergreenAISettingTab extends PluginSettingTab {
       }
 
       // Click to select
-      folderItem.addEventListener('click', async () => {
+      folderItem.addEventListener('click', () => {
         this.plugin.settings.selectedFolderIndex = i;
-        await this.plugin.saveSettings();
-        this.display();
+        this.plugin.saveSettings().then(() => this.display());
       });
 
       // Remove button
       const removeBtn = folderItem.createEl('button', { text: '\u00d7', cls: 'remove-btn' });
-      removeBtn.addEventListener('click', async (e) => {
+      removeBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         this.plugin.settings.wonderlandFolders.splice(i, 1);
         // Adjust selected index if needed
         if (this.plugin.settings.selectedFolderIndex >= this.plugin.settings.wonderlandFolders.length) {
           this.plugin.settings.selectedFolderIndex = Math.max(0, this.plugin.settings.wonderlandFolders.length - 1);
         }
-        await this.plugin.saveSettings();
-        this.display();
+        this.plugin.saveSettings().then(() => this.display());
       });
     }
   }
@@ -319,7 +317,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     if (availableFolders.length > 0) {
       new Setting(containerEl)
         .setName('Add existing folder')
-        .setDesc('Select an existing folder to become a Wonderland')
+        .setDesc('Select an existing folder to enable')
         .addDropdown((dropdown) => {
           dropdown.addOption('', '-- Select a folder --');
           for (const folder of availableFolders) {
@@ -341,8 +339,8 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     // Text input for creating new folders by name
     let newFolderName = '';
     new Setting(containerEl)
-      .setName('Create new Wonderland folder')
-      .setDesc('Type a folder name to create a new Wonderland (will be created if it doesn\'t exist)')
+      .setName('Create new folder')
+      .setDesc('Type a folder name to create a new folder (will be created if it doesn\'t exist)')
       .addText((text) =>
         text
           .setPlaceholder('e.g., Research/AI or Personal Notes')
@@ -386,23 +384,23 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     const folderSettings = this.plugin.selectedFolderSettings;
     if (!folderSettings) return;
 
-    new Setting(containerEl).setName(`Settings for: ${folderSettings.path}`).setHeading();
+    new Setting(containerEl).setName(folderSettings.path).setHeading();
 
     // Folder Goal Section
     new Setting(containerEl).setName('Folder goal').setHeading();
 
     new Setting(containerEl)
       .setName('Content focus')
-      .setDesc('How AI should approach generating content for this Wonderland')
+      .setDesc('How AI should approach generating content for this folder')
       .addDropdown((dropdown) =>
         dropdown
           .addOptions({
-            learn: 'Learning - Understanding and retention',
-            action: 'Action-oriented - Practical steps and how-to guides',
-            reflect: 'Critical reflection - Deep thinking and analysis',
-            research: 'Research - Evidence-based with citations',
-            creative: 'Creative - Imaginative connections',
-            custom: 'Custom - Define your own focus',
+            learn: 'Learning - understanding and retention',
+            action: 'Action-oriented - practical steps and how-to guides',
+            reflect: 'Critical reflection - deep thinking and analysis',
+            research: 'Research - evidence-based with citations',
+            creative: 'Creative - imaginative connections',
+            custom: 'Custom - define your own focus',
           })
           .setValue(folderSettings.folderGoal || 'learn')
           .onChange(async (value: FolderGoal) => {
@@ -416,7 +414,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     if (folderSettings.folderGoal === 'custom') {
       new Setting(containerEl)
         .setName('Custom goal description')
-        .setDesc('Describe the focus for this Wonderland')
+        .setDesc('Describe the focus for this folder')
         .addTextArea((text) =>
           text
             .setPlaceholder('e.g., "Focus on comparing different philosophical perspectives"')
@@ -435,8 +433,8 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     new Setting(containerEl).setName('Custom instructions').setHeading();
 
     new Setting(containerEl)
-      .setName('Custom instructions for this Wonderland')
-      .setDesc('Special instructions for how notes should be generated (e.g., "Generate notes as step-by-step cooking guides" or "Write in a formal academic style")')
+      .setName('Custom instructions for this folder')
+      .setDesc('Special instructions for how notes should be generated (e.g., "generate notes as step-by-step cooking guides" or "write in a formal academic style")')
       .addTextArea((text) =>
         text
           .setPlaceholder('e.g., "Generate notes as step-by-step cooking guides with ingredients lists"')
@@ -486,7 +484,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     new Setting(containerEl).setName('Personalized suggestions').setHeading();
 
     new Setting(containerEl)
-      .setName('Customize "Down the rabbit hole" suggestions')
+      .setName('Customize "down the rabbit hole" suggestions')
       .setDesc('Base exploration suggestions on your interests')
       .addToggle((toggle) =>
         toggle
@@ -800,7 +798,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     new Setting(containerEl).setName('Enrichment blacklist').setHeading();
 
     containerEl.createEl('p', {
-      text: 'Notes on this list will be excluded from automatic enrichment. Use the "Toggle enrichment blacklist" command to add/remove notes.',
+      text: 'Notes on this list will be excluded from automatic enrichment. Use the "toggle enrichment blacklist" command to add/remove notes.',
       cls: 'setting-item-description',
     });
 
@@ -821,10 +819,9 @@ export class EvergreenAISettingTab extends PluginSettingTab {
         item.createSpan({ text: noteBasename });
 
         const removeBtn = item.createEl('button', { text: '\u00d7', cls: 'remove-btn' });
-        removeBtn.addEventListener('click', async () => {
+        removeBtn.addEventListener('click', () => {
           folderSettings.enrichBlacklist = folderSettings.enrichBlacklist.filter(p => p !== notePath);
-          await this.plugin.saveSettings();
-          this.display();
+          this.plugin.saveSettings().then(() => this.display());
         });
       }
 
@@ -841,7 +838,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
         );
     } else {
       containerEl.createEl('p', {
-        text: 'No notes are currently blacklisted. Open a note and use the "Toggle enrichment blacklist" command to add it.',
+        text: 'No notes are currently blacklisted. Open a note and use the "toggle enrichment blacklist" command to add it.',
         cls: 'setting-item-description',
       });
     }
@@ -850,7 +847,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     new Setting(containerEl).setName('Rabbit holes index').setHeading();
 
     containerEl.createEl('p', {
-      text: 'The Rabbit Holes Index shows all unresolved links (unexplored paths) in this Wonderland.',
+      text: 'The rabbit holes index shows all unresolved links (unexplored paths) in this folder.',
       cls: 'setting-item-description',
     });
 
