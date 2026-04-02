@@ -30,6 +30,17 @@ module.exports = __toCommonJS(main_exports);
 var import_obsidian3 = require("obsidian");
 
 // src/types.ts
+var IMAGE_MODEL_DEFAULTS = {
+  openai: {
+    endpoint: "https://api.openai.com/v1/images/generations",
+    models: ["dall-e-3", "dall-e-2"]
+  },
+  stability: {
+    endpoint: "https://api.stability.ai/v2beta/stable-image/generate/core",
+    models: ["stable-image-core", "sd3-large", "sd3-medium"]
+  },
+  custom: { endpoint: "", models: [] }
+};
 var DEFAULT_FOLDER_SETTINGS = {
   customInstructions: "",
   // Folder goal
@@ -64,7 +75,9 @@ var DEFAULT_FOLDER_SETTINGS = {
   // Enrichment blacklist
   enrichBlacklist: [],
   enableRabbitHolesIndex: false,
-  autoUpdateRabbitHolesIndex: false
+  autoUpdateRabbitHolesIndex: false,
+  // Image generation
+  autoGenerateImages: false
 };
 var DEFAULT_SETTINGS = {
   aiProvider: "openai",
@@ -75,6 +88,13 @@ var DEFAULT_SETTINGS = {
   temperature: 0.7,
   globalInstructions: "",
   // Global instructions for all Wonderland folders
+  // Image generation
+  imageProvider: "openai",
+  imageApiKey: "",
+  imageApiEndpoint: "",
+  imageModel: "dall-e-3",
+  imageSize: "1024x1024",
+  imageStorageFolder: "",
   wonderlandFolders: [],
   // Start empty, user picks existing folders
   selectedFolderIndex: 0,
@@ -117,6 +137,7 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
     this.plugin = plugin;
   }
   display() {
+    var _a, _b;
     const { containerEl } = this;
     containerEl.empty();
     new import_obsidian.Setting(containerEl).setName("Wonderland settings").setHeading();
@@ -232,6 +253,68 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
             button.setDisabled(false);
           }, 3e3);
         }
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Image generation (experimental \u2014 untested)").setHeading();
+    containerEl.createEl("p", {
+      text: "\u26A0\uFE0F This feature is experimental and has not been fully tested. Use with caution.",
+      cls: "setting-item-description"
+    });
+    new import_obsidian.Setting(containerEl).setName("Image provider").setDesc("AI provider to use for generating images").addDropdown(
+      (dropdown) => dropdown.addOption("openai", "OpenAI DALL-E").addOption("stability", "Stability AI").addOption("custom", "Custom endpoint").setValue(this.plugin.settings.imageProvider).onChange(async (value) => {
+        var _a2;
+        this.plugin.settings.imageProvider = value;
+        const models = (_a2 = IMAGE_MODEL_DEFAULTS[value]) == null ? void 0 : _a2.models;
+        if (models && models.length > 0) {
+          this.plugin.settings.imageModel = models[0];
+        }
+        await this.plugin.saveSettings();
+        this.display();
+      })
+    );
+    if (this.plugin.settings.imageProvider !== "custom") {
+      const providerModels2 = (_b = (_a = IMAGE_MODEL_DEFAULTS[this.plugin.settings.imageProvider]) == null ? void 0 : _a.models) != null ? _b : [];
+      new import_obsidian.Setting(containerEl).setName("Image model").addDropdown((dropdown) => {
+        for (const m of providerModels2)
+          dropdown.addOption(m, m);
+        return dropdown.setValue(this.plugin.settings.imageModel).onChange(async (value) => {
+          this.plugin.settings.imageModel = value;
+          await this.plugin.saveSettings();
+        });
+      });
+    } else {
+      new import_obsidian.Setting(containerEl).setName("Image model").setDesc("Model name to send to your custom endpoint").addText(
+        (text) => text.setValue(this.plugin.settings.imageModel).onChange(async (value) => {
+          this.plugin.settings.imageModel = value;
+          await this.plugin.saveSettings();
+        })
+      );
+    }
+    new import_obsidian.Setting(containerEl).setName("Image API key").setDesc("Leave blank to use your main API key above").addText((text) => {
+      text.inputEl.type = "password";
+      return text.setPlaceholder("sk-...").setValue(this.plugin.settings.imageApiKey).onChange(async (value) => {
+        this.plugin.settings.imageApiKey = value.trim();
+        await this.plugin.saveSettings();
+      });
+    });
+    if (this.plugin.settings.imageProvider === "custom") {
+      new import_obsidian.Setting(containerEl).setName("Image API endpoint").setDesc("URL of your custom OpenAI-compatible image generation endpoint").addText(
+        (text) => text.setPlaceholder("https://your-endpoint/v1/images/generations").setValue(this.plugin.settings.imageApiEndpoint).onChange(async (value) => {
+          this.plugin.settings.imageApiEndpoint = value.trim();
+          await this.plugin.saveSettings();
+        })
+      );
+    }
+    new import_obsidian.Setting(containerEl).setName("Image size").addDropdown(
+      (dropdown) => dropdown.addOption("1024x1024", "1024\xD71024 (Square)").addOption("1792x1024", "1792\xD71024 (Wide)").addOption("1024x1792", "1024\xD71792 (Tall)").addOption("512x512", "512\xD7512 (Small)").setValue(this.plugin.settings.imageSize).onChange(async (value) => {
+        this.plugin.settings.imageSize = value;
+        await this.plugin.saveSettings();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName("Image storage folder").setDesc("Vault folder where generated images are saved. Leave blank to use the vault's default attachment folder.").addText(
+      (text) => text.setPlaceholder("e.g., Assets/Images").setValue(this.plugin.settings.imageStorageFolder).onChange(async (value) => {
+        this.plugin.settings.imageStorageFolder = value.trim();
+        await this.plugin.saveSettings();
       })
     );
     new import_obsidian.Setting(containerEl).setName("Global instructions").setHeading();
@@ -629,6 +712,13 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
         button.setDisabled(false);
       })
     );
+    new import_obsidian.Setting(containerEl).setName("Image generation").setHeading();
+    new import_obsidian.Setting(containerEl).setName("Auto-generate images").setDesc("Generate an AI cover image when a new note is created in this folder").addToggle(
+      (toggle) => toggle.setValue(folderSettings.autoGenerateImages).onChange(async (value) => {
+        folderSettings.autoGenerateImages = value;
+        await this.plugin.saveSettings();
+      })
+    );
   }
 };
 
@@ -845,6 +935,107 @@ var AIService = class {
     } finally {
       this.activeAbortControllers.delete(controller);
     }
+  }
+  async generateImage(prompt) {
+    this.ensureAlive();
+    return this.executeWithRetry(async () => {
+      const { endpoint, headers, body } = this.buildImageRequest(prompt);
+      const controller = new AbortController();
+      this.activeAbortControllers.add(controller);
+      try {
+        const response = await this.requestWithAbort(
+          { url: endpoint, method: "POST", headers, body },
+          controller.signal
+        );
+        if (response.status >= 400) {
+          throw this.parseErrorResponse(response.status, response.json);
+        }
+        return this.parseImageResponse(response.json);
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          throw new AIServiceError("Request cancelled", "UNKNOWN" /* UNKNOWN */, false);
+        }
+        if (this.isNetworkError(error)) {
+          throw new AIServiceError(
+            "Network error - please check your internet connection",
+            "NETWORK_ERROR" /* NETWORK_ERROR */,
+            true
+          );
+        }
+        throw error;
+      } finally {
+        this.activeAbortControllers.delete(controller);
+      }
+    });
+  }
+  buildImageRequest(prompt) {
+    const provider = this.settings.imageProvider;
+    const effectiveKey = this.settings.imageApiKey || this.settings.apiKey;
+    if (provider === "openai") {
+      return {
+        endpoint: IMAGE_MODEL_DEFAULTS.openai.endpoint,
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${effectiveKey}`
+        },
+        body: JSON.stringify({
+          model: this.settings.imageModel,
+          prompt,
+          n: 1,
+          size: this.settings.imageSize,
+          response_format: "b64_json"
+        })
+      };
+    }
+    if (provider === "stability") {
+      const params = new URLSearchParams();
+      params.set("prompt", prompt);
+      params.set("output_format", "png");
+      if (this.settings.imageModel)
+        params.set("model", this.settings.imageModel);
+      return {
+        endpoint: IMAGE_MODEL_DEFAULTS.stability.endpoint,
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Authorization": `Bearer ${effectiveKey}`,
+          "Accept": "application/json"
+        },
+        body: params.toString()
+      };
+    }
+    return {
+      endpoint: this.settings.imageApiEndpoint,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${effectiveKey}`
+      },
+      body: JSON.stringify({
+        model: this.settings.imageModel,
+        prompt,
+        n: 1,
+        size: this.settings.imageSize,
+        response_format: "b64_json"
+      })
+    };
+  }
+  parseImageResponse(json) {
+    var _a;
+    const provider = this.settings.imageProvider;
+    if (provider === "stability") {
+      return {
+        imageData: json.image,
+        format: "png"
+      };
+    }
+    const data = (_a = json.data) == null ? void 0 : _a[0];
+    if (!data) {
+      throw new AIServiceError("Invalid image response: no data", "UNKNOWN" /* UNKNOWN */, false);
+    }
+    return {
+      imageData: data.b64_json,
+      format: "png",
+      revisedPrompt: data.revised_prompt
+    };
   }
   requestWithAbort(options, signal) {
     return new Promise((resolve, reject) => {
@@ -1782,6 +1973,23 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
       }
     });
     this.addCommand({
+      id: "generate-note-image",
+      name: "Generate image for current note",
+      callback: async () => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (!activeFile) {
+          new import_obsidian3.Notice("No active note");
+          return;
+        }
+        const folderSettings = this.getWonderlandSettingsFor(activeFile.path);
+        if (!folderSettings) {
+          new import_obsidian3.Notice("This note is not in a Wonderland folder");
+          return;
+        }
+        await this.generateImageForNote(activeFile, folderSettings);
+      }
+    });
+    this.addCommand({
       id: "toggle-killswitch",
       name: "Toggle AI killswitch (emergency stop)",
       callback: async () => {
@@ -2462,6 +2670,9 @@ ${response.content}
       if (folderSettings.autoUpdateRabbitHolesIndex) {
         await this.generateRabbitHolesIndex(folderSettings, true);
       }
+      if (folderSettings.autoGenerateImages && !this.settings.killswitchActive) {
+        void this.generateImageForNote(file, folderSettings);
+      }
       notice.hide();
       new import_obsidian3.Notice(`Generated: ${title}`);
     } catch (error) {
@@ -2769,6 +2980,90 @@ Which folder should this note go in? Respond with ONLY the folder name.`;
   }
   sanitizeFileName(name) {
     return name.replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ").trim().substring(0, 100);
+  }
+  validateImageSettings() {
+    if (!this.settings.imageModel) {
+      new import_obsidian3.Notice("No image model configured \u2014 check Image generation settings");
+      return false;
+    }
+    if (this.settings.imageProvider === "custom" && !this.settings.imageApiEndpoint) {
+      new import_obsidian3.Notice("No image API endpoint configured");
+      return false;
+    }
+    const effectiveKey = this.settings.imageApiKey || this.settings.apiKey;
+    if (!effectiveKey) {
+      new import_obsidian3.Notice("No API key configured for image generation");
+      return false;
+    }
+    return true;
+  }
+  async buildImagePrompt(file) {
+    const title = file.basename;
+    let firstParagraph = "";
+    try {
+      const content = await this.app.vault.read(file);
+      let body = content;
+      if (body.startsWith("---\n")) {
+        const end = body.indexOf("\n---\n", 4);
+        if (end !== -1)
+          body = body.slice(end + 5);
+      }
+      const lines = body.split("\n");
+      for (const line of lines) {
+        const stripped = line.replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, "$1").replace(/!\[\[[^\]]*\]\]/g, "").replace(/[#*_`>]/g, "").trim();
+        if (stripped.length > 10) {
+          firstParagraph = stripped.substring(0, 200);
+          break;
+        }
+      }
+    } catch (e) {
+    }
+    const base = firstParagraph ? `${title}. ${firstParagraph}` : title;
+    return `${base.substring(0, 400)}, digital illustration, clean composition, vivid colors`;
+  }
+  insertImageEmbed(noteContent, imageFilename) {
+    const embedLine = `![[${imageFilename}]]
+
+`;
+    if (noteContent.startsWith("---\n")) {
+      const end = noteContent.indexOf("\n---\n", 4);
+      if (end !== -1) {
+        const insertAt = end + 5;
+        return noteContent.slice(0, insertAt) + embedLine + noteContent.slice(insertAt);
+      }
+    }
+    return embedLine + noteContent;
+  }
+  async generateImageForNote(file, _folderSettings) {
+    if (!this.validateImageSettings())
+      return;
+    const notice = new import_obsidian3.Notice("Generating image...", 0);
+    try {
+      const prompt = await this.buildImagePrompt(file);
+      const response = await this.aiService.generateImage(prompt);
+      const storageFolder = this.settings.imageStorageFolder || this.app.vault.getConfig("attachmentFolderPath") || "";
+      if (storageFolder) {
+        await this.ensureFolderExists(storageFolder);
+      }
+      const baseName = this.sanitizeFileName(file.basename);
+      let imageName = `${baseName}-image.png`;
+      const imageFull = storageFolder ? `${storageFolder}/${imageName}` : imageName;
+      if (this.app.vault.getAbstractFileByPath(imageFull)) {
+        imageName = `${baseName}-image-${Date.now()}.png`;
+      }
+      const imagePath = (0, import_obsidian3.normalizePath)(storageFolder ? `${storageFolder}/${imageName}` : imageName);
+      const binary = Uint8Array.from(atob(response.imageData), (c) => c.charCodeAt(0));
+      await this.app.vault.createBinary(imagePath, binary.buffer);
+      const content = await this.app.vault.read(file);
+      const updated = this.insertImageEmbed(content, imageName);
+      await this.app.vault.modify(file, updated);
+      notice.hide();
+      new import_obsidian3.Notice("Image added to note");
+    } catch (error) {
+      notice.hide();
+      const msg = error instanceof Error ? error.message : String(error);
+      new import_obsidian3.Notice(`Image generation failed: ${msg}`);
+    }
   }
   escapeRegExp(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

@@ -1,6 +1,28 @@
 // AI Provider types
 export type AIProvider = 'openai' | 'anthropic' | 'ollama' | 'custom';
 export type TitleStyle = 'concept' | 'question' | 'statement';
+
+// Image generation types
+export type ImageProvider = 'openai' | 'stability' | 'custom';
+export type ImageSize = '1024x1024' | '1792x1024' | '1024x1792' | '512x512';
+
+export const IMAGE_MODEL_DEFAULTS: Record<ImageProvider, { endpoint: string; models: string[] }> = {
+  openai: {
+    endpoint: 'https://api.openai.com/v1/images/generations',
+    models: ['dall-e-3', 'dall-e-2'],
+  },
+  stability: {
+    endpoint: 'https://api.stability.ai/v2beta/stable-image/generate/core',
+    models: ['stable-image-core', 'sd3-large', 'sd3-medium'],
+  },
+  custom: { endpoint: '', models: [] },
+};
+
+export interface ImageGenerationResponse {
+  imageData: string;       // base64-encoded bytes
+  format: 'png' | 'jpeg' | 'webp';
+  revisedPrompt?: string;  // OpenAI returns the actual prompt used
+}
 export type SuggestionFrequency = 'always' | 'daily' | 'weekly' | 'manual';
 
 // Folder goal types for different learning/exploration styles
@@ -60,6 +82,9 @@ export interface WonderlandFolderSettings {
   // Rabbit Holes Index - shows all unresolved links
   enableRabbitHolesIndex: boolean;  // Auto-generate rabbit holes index
   autoUpdateRabbitHolesIndex: boolean;  // Update index on each new note
+
+  // Image generation (per-folder)
+  autoGenerateImages: boolean;  // Generate cover image after note content is written
 }
 
 // Default settings for a new Wonderland folder
@@ -108,6 +133,9 @@ export const DEFAULT_FOLDER_SETTINGS: Omit<WonderlandFolderSettings, 'path'> = {
 
   enableRabbitHolesIndex: false,
   autoUpdateRabbitHolesIndex: false,
+
+  // Image generation
+  autoGenerateImages: false,
 };
 
 // Plugin settings (global + per-folder)
@@ -122,6 +150,14 @@ export interface EvergreenAISettings {
 
   // Global instructions that apply to ALL Wonderland folders
   globalInstructions: string;
+
+  // Image generation (global)
+  imageProvider: ImageProvider;
+  imageApiKey: string;       // leave blank to reuse main apiKey
+  imageApiEndpoint: string;  // for 'custom' provider
+  imageModel: string;
+  imageSize: ImageSize;
+  imageStorageFolder: string;  // '' = vault attachment folder
 
   // Wonderland folders with their individual settings
   wonderlandFolders: WonderlandFolderSettings[];
@@ -150,6 +186,14 @@ export const DEFAULT_SETTINGS: EvergreenAISettings = {
   temperature: 0.7,
 
   globalInstructions: '',  // Global instructions for all Wonderland folders
+
+  // Image generation
+  imageProvider: 'openai',
+  imageApiKey: '',
+  imageApiEndpoint: '',
+  imageModel: 'dall-e-3',
+  imageSize: '1024x1024',
+  imageStorageFolder: '',
 
   wonderlandFolders: [],  // Start empty, user picks existing folders
   selectedFolderIndex: 0,

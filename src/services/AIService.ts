@@ -3,7 +3,9 @@ import {
   EvergreenAISettings,
   AIStreamChunk,
   AIResponse,
-  PROVIDER_DEFAULTS
+  PROVIDER_DEFAULTS,
+  ImageGenerationResponse,
+  IMAGE_MODEL_DEFAULTS,
 } from '../types';
 
 // Debug logging - only enabled in development
@@ -299,6 +301,120 @@ export class AIService {
     } finally {
       this.activeAbortControllers.delete(controller);
     }
+  }
+
+  async generateImage(prompt: string): Promise<ImageGenerationResponse> {
+    this.ensureAlive();
+
+    return this.executeWithRetry(async () => {
+      const { endpoint, headers, body } = this.buildImageRequest(prompt);
+
+      const controller = new AbortController();
+      this.activeAbortControllers.add(controller);
+
+      try {
+        const response = await this.requestWithAbort(
+          { url: endpoint, method: 'POST', headers, body },
+          controller.signal
+        );
+
+        if (response.status >= 400) {
+          throw this.parseErrorResponse(response.status, response.json);
+        }
+
+        return this.parseImageResponse(response.json);
+      } catch (error) {
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new AIServiceError('Request cancelled', AIErrorCode.UNKNOWN, false);
+        }
+        if (this.isNetworkError(error)) {
+          throw new AIServiceError(
+            'Network error - please check your internet connection',
+            AIErrorCode.NETWORK_ERROR,
+            true
+          );
+        }
+        throw error;
+      } finally {
+        this.activeAbortControllers.delete(controller);
+      }
+    });
+  }
+
+  private buildImageRequest(prompt: string): { endpoint: string; headers: Record<string, string>; body: string } {
+    const provider = this.settings.imageProvider;
+    const effectiveKey = this.settings.imageApiKey || this.settings.apiKey;
+
+    if (provider === 'openai') {
+      return {
+        endpoint: IMAGE_MODEL_DEFAULTS.openai.endpoint,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${effectiveKey}`,
+        },
+        body: JSON.stringify({
+          model: this.settings.imageModel,
+          prompt,
+          n: 1,
+          size: this.settings.imageSize,
+          response_format: 'b64_json',
+        }),
+      };
+    }
+
+    if (provider === 'stability') {
+      const params = new URLSearchParams();
+      params.set('prompt', prompt);
+      params.set('output_format', 'png');
+      if (this.settings.imageModel) params.set('model', this.settings.imageModel);
+      return {
+        endpoint: IMAGE_MODEL_DEFAULTS.stability.endpoint,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Authorization': `Bearer ${effectiveKey}`,
+          'Accept': 'application/json',
+        },
+        body: params.toString(),
+      };
+    }
+
+    // custom: OpenAI-compatible JSON to imageApiEndpoint
+    return {
+      endpoint: this.settings.imageApiEndpoint,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${effectiveKey}`,
+      },
+      body: JSON.stringify({
+        model: this.settings.imageModel,
+        prompt,
+        n: 1,
+        size: this.settings.imageSize,
+        response_format: 'b64_json',
+      }),
+    };
+  }
+
+  private parseImageResponse(json: Record<string, unknown>): ImageGenerationResponse {
+    const provider = this.settings.imageProvider;
+
+    if (provider === 'stability') {
+      return {
+        imageData: json.image as string,
+        format: 'png',
+      };
+    }
+
+    // openai and custom: OpenAI format
+    const data = (json.data as Array<Record<string, unknown>>)?.[0];
+    if (!data) {
+      throw new AIServiceError('Invalid image response: no data', AIErrorCode.UNKNOWN, false);
+    }
+    return {
+      imageData: data.b64_json as string,
+      format: 'png',
+      revisedPrompt: data.revised_prompt as string | undefined,
+    };
   }
 
   private requestWithAbort(
