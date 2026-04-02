@@ -211,7 +211,12 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     // ============================================
     // IMAGE GENERATION SECTION
     // ============================================
-    new Setting(containerEl).setName('Image generation').setHeading();
+    new Setting(containerEl).setName('Image generation (experimental — untested)').setHeading();
+
+    containerEl.createEl('p', {
+      text: '⚠️ This feature is experimental and has not been fully tested. Use with caution.',
+      cls: 'setting-item-description',
+    });
 
     new Setting(containerEl)
       .setName('Image provider')

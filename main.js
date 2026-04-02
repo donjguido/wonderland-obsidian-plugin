@@ -255,7 +255,11 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
         }
       })
     );
-    new import_obsidian.Setting(containerEl).setName("Image generation").setHeading();
+    new import_obsidian.Setting(containerEl).setName("Image generation (experimental \u2014 untested)").setHeading();
+    containerEl.createEl("p", {
+      text: "\u26A0\uFE0F This feature is experimental and has not been fully tested. Use with caution.",
+      cls: "setting-item-description"
+    });
     new import_obsidian.Setting(containerEl).setName("Image provider").setDesc("AI provider to use for generating images").addDropdown(
       (dropdown) => dropdown.addOption("openai", "OpenAI DALL-E").addOption("stability", "Stability AI").addOption("custom", "Custom endpoint").setValue(this.plugin.settings.imageProvider).onChange(async (value) => {
         var _a2;
