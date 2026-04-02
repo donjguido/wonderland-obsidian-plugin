@@ -3,6 +3,7 @@ import {
   Editor,
   Modal,
   Notice,
+  normalizePath,
   Plugin,
   TFile,
   TFolder,
@@ -424,6 +425,25 @@ export default class EvergreenAIPlugin extends Plugin {
           await this.saveSettings();
           new Notice(`"${activeFile.basename}" added to enrichment blacklist`);
         }
+      },
+    });
+
+    // Generate image for current note
+    this.addCommand({
+      id: 'generate-note-image',
+      name: 'Generate image for current note',
+      callback: async () => {
+        const activeFile = this.app.workspace.getActiveFile();
+        if (!activeFile) {
+          new Notice('No active note');
+          return;
+        }
+        const folderSettings = this.getWonderlandSettingsFor(activeFile.path);
+        if (!folderSettings) {
+          new Notice('This note is not in a Wonderland folder');
+          return;
+        }
+        await this.generateImageForNote(activeFile, folderSettings);
       },
     });
 
@@ -1323,6 +1343,11 @@ ${response.content}
         await this.generateRabbitHolesIndex(folderSettings, true);
       }
 
+      // Auto-generate image if enabled for this folder
+      if (folderSettings.autoGenerateImages && !this.settings.killswitchActive) {
+        void this.generateImageForNote(file, folderSettings);
+      }
+
       notice.hide();
       new Notice(`Generated: ${title}`);
     } catch (error) {
@@ -1701,6 +1726,110 @@ ${response.content}
       .replace(/\s+/g, ' ')
       .trim()
       .substring(0, 100);
+  }
+
+  private validateImageSettings(): boolean {
+    if (!this.settings.imageModel) {
+      new Notice('No image model configured — check Image generation settings');
+      return false;
+    }
+    if (this.settings.imageProvider === 'custom' && !this.settings.imageApiEndpoint) {
+      new Notice('No image API endpoint configured');
+      return false;
+    }
+    const effectiveKey = this.settings.imageApiKey || this.settings.apiKey;
+    if (!effectiveKey) {
+      new Notice('No API key configured for image generation');
+      return false;
+    }
+    return true;
+  }
+
+  private async buildImagePrompt(file: TFile): Promise<string> {
+    const title = file.basename;
+    let firstParagraph = '';
+    try {
+      const content = await this.app.vault.read(file);
+      // Strip YAML frontmatter
+      let body = content;
+      if (body.startsWith('---\n')) {
+        const end = body.indexOf('\n---\n', 4);
+        if (end !== -1) body = body.slice(end + 5);
+      }
+      // Get first non-empty line/paragraph (up to 200 chars)
+      const lines = body.split('\n');
+      for (const line of lines) {
+        const stripped = line
+          .replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, '$1')  // wikilinks
+          .replace(/!\[\[[^\]]*\]\]/g, '')                      // image embeds
+          .replace(/[#*_`>]/g, '')                              // markdown
+          .trim();
+        if (stripped.length > 10) {
+          firstParagraph = stripped.substring(0, 200);
+          break;
+        }
+      }
+    } catch {
+      // fall back to title only
+    }
+    const base = firstParagraph ? `${title}. ${firstParagraph}` : title;
+    return `${base.substring(0, 400)}, digital illustration, clean composition, vivid colors`;
+  }
+
+  private insertImageEmbed(noteContent: string, imageFilename: string): string {
+    const embedLine = `![[${imageFilename}]]\n\n`;
+    if (noteContent.startsWith('---\n')) {
+      const end = noteContent.indexOf('\n---\n', 4);
+      if (end !== -1) {
+        const insertAt = end + 5;
+        return noteContent.slice(0, insertAt) + embedLine + noteContent.slice(insertAt);
+      }
+    }
+    return embedLine + noteContent;
+  }
+
+  async generateImageForNote(file: TFile, _folderSettings: WonderlandFolderSettings): Promise<void> {
+    if (!this.validateImageSettings()) return;
+
+    const notice = new Notice('Generating image...', 0);
+    try {
+      const prompt = await this.buildImagePrompt(file);
+      const response = await this.aiService.generateImage(prompt);
+
+      // Determine storage folder
+      const storageFolder = this.settings.imageStorageFolder ||
+        (this.app.vault as unknown as { getConfig: (key: string) => string }).getConfig('attachmentFolderPath') ||
+        '';
+
+      if (storageFolder) {
+        await this.ensureFolderExists(storageFolder);
+      }
+
+      // Compute image filename, avoid collisions
+      const baseName = this.sanitizeFileName(file.basename);
+      let imageName = `${baseName}-image.png`;
+      const imageFull = storageFolder ? `${storageFolder}/${imageName}` : imageName;
+      if (this.app.vault.getAbstractFileByPath(imageFull)) {
+        imageName = `${baseName}-image-${Date.now()}.png`;
+      }
+      const imagePath = normalizePath(storageFolder ? `${storageFolder}/${imageName}` : imageName);
+
+      // Decode base64 and write image file
+      const binary = Uint8Array.from(atob(response.imageData), (c) => c.charCodeAt(0));
+      await this.app.vault.createBinary(imagePath, binary.buffer as ArrayBuffer);
+
+      // Embed image in note
+      const content = await this.app.vault.read(file);
+      const updated = this.insertImageEmbed(content, imageName);
+      await this.app.vault.modify(file, updated);
+
+      notice.hide();
+      new Notice('Image added to note');
+    } catch (error) {
+      notice.hide();
+      const msg = error instanceof Error ? error.message : String(error);
+      new Notice(`Image generation failed: ${msg}`);
+    }
   }
 
   escapeRegExp(string: string): string {

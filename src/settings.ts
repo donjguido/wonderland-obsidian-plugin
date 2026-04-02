@@ -1,6 +1,6 @@
 import { App, PluginSettingTab, Setting, Platform } from 'obsidian';
 import type EvergreenAIPlugin from './main';
-import { AIProvider, PROVIDER_DEFAULTS, TitleStyle, FolderGoal, createFolderSettings } from './types';
+import { AIProvider, PROVIDER_DEFAULTS, TitleStyle, FolderGoal, createFolderSettings, ImageProvider, IMAGE_MODEL_DEFAULTS } from './types';
 
 export class EvergreenAISettingTab extends PluginSettingTab {
   plugin: EvergreenAIPlugin;
@@ -205,6 +205,115 @@ export class EvergreenAISettingTab extends PluginSettingTab {
                 button.setDisabled(false);
               }, 3000);
             }
+          })
+      );
+
+    // ============================================
+    // IMAGE GENERATION SECTION
+    // ============================================
+    new Setting(containerEl).setName('Image generation').setHeading();
+
+    new Setting(containerEl)
+      .setName('Image provider')
+      .setDesc('AI provider to use for generating images')
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption('openai', 'OpenAI DALL-E')
+          .addOption('stability', 'Stability AI')
+          .addOption('custom', 'Custom endpoint')
+          .setValue(this.plugin.settings.imageProvider)
+          .onChange(async (value: string) => {
+            this.plugin.settings.imageProvider = value as ImageProvider;
+            const models = IMAGE_MODEL_DEFAULTS[value as ImageProvider]?.models;
+            if (models && models.length > 0) {
+              this.plugin.settings.imageModel = models[0];
+            }
+            await this.plugin.saveSettings();
+            this.display();
+          })
+      );
+
+    if (this.plugin.settings.imageProvider !== 'custom') {
+      const providerModels = IMAGE_MODEL_DEFAULTS[this.plugin.settings.imageProvider]?.models ?? [];
+      new Setting(containerEl)
+        .setName('Image model')
+        .addDropdown((dropdown) => {
+          for (const m of providerModels) dropdown.addOption(m, m);
+          return dropdown
+            .setValue(this.plugin.settings.imageModel)
+            .onChange(async (value) => {
+              this.plugin.settings.imageModel = value;
+              await this.plugin.saveSettings();
+            });
+        });
+    } else {
+      new Setting(containerEl)
+        .setName('Image model')
+        .setDesc('Model name to send to your custom endpoint')
+        .addText((text) =>
+          text
+            .setValue(this.plugin.settings.imageModel)
+            .onChange(async (value) => {
+              this.plugin.settings.imageModel = value;
+              await this.plugin.saveSettings();
+            })
+        );
+    }
+
+    new Setting(containerEl)
+      .setName('Image API key')
+      .setDesc('Leave blank to use your main API key above')
+      .addText((text) => {
+        text.inputEl.type = 'password';
+        return text
+          .setPlaceholder('sk-...')
+          .setValue(this.plugin.settings.imageApiKey)
+          .onChange(async (value) => {
+            this.plugin.settings.imageApiKey = value.trim();
+            await this.plugin.saveSettings();
+          });
+      });
+
+    if (this.plugin.settings.imageProvider === 'custom') {
+      new Setting(containerEl)
+        .setName('Image API endpoint')
+        .setDesc('URL of your custom OpenAI-compatible image generation endpoint')
+        .addText((text) =>
+          text
+            .setPlaceholder('https://your-endpoint/v1/images/generations')
+            .setValue(this.plugin.settings.imageApiEndpoint)
+            .onChange(async (value) => {
+              this.plugin.settings.imageApiEndpoint = value.trim();
+              await this.plugin.saveSettings();
+            })
+        );
+    }
+
+    new Setting(containerEl)
+      .setName('Image size')
+      .addDropdown((dropdown) =>
+        dropdown
+          .addOption('1024x1024', '1024×1024 (Square)')
+          .addOption('1792x1024', '1792×1024 (Wide)')
+          .addOption('1024x1792', '1024×1792 (Tall)')
+          .addOption('512x512', '512×512 (Small)')
+          .setValue(this.plugin.settings.imageSize)
+          .onChange(async (value) => {
+            this.plugin.settings.imageSize = value as '1024x1024' | '1792x1024' | '1024x1792' | '512x512';
+            await this.plugin.saveSettings();
+          })
+      );
+
+    new Setting(containerEl)
+      .setName('Image storage folder')
+      .setDesc('Vault folder where generated images are saved. Leave blank to use the vault\'s default attachment folder.')
+      .addText((text) =>
+        text
+          .setPlaceholder('e.g., Assets/Images')
+          .setValue(this.plugin.settings.imageStorageFolder)
+          .onChange(async (value) => {
+            this.plugin.settings.imageStorageFolder = value.trim();
+            await this.plugin.saveSettings();
           })
       );
 
@@ -893,6 +1002,23 @@ export class EvergreenAISettingTab extends PluginSettingTab {
             await this.plugin.generateRabbitHolesIndex(folderSettings);
             button.setButtonText('Generate index');
             button.setDisabled(false);
+          })
+      );
+
+    // ============================================
+    // PER-FOLDER IMAGE GENERATION SECTION
+    // ============================================
+    new Setting(containerEl).setName('Image generation').setHeading();
+
+    new Setting(containerEl)
+      .setName('Auto-generate images')
+      .setDesc('Generate an AI cover image when a new note is created in this folder')
+      .addToggle((toggle) =>
+        toggle
+          .setValue(folderSettings.autoGenerateImages)
+          .onChange(async (value) => {
+            folderSettings.autoGenerateImages = value;
+            await this.plugin.saveSettings();
           })
       );
   }
