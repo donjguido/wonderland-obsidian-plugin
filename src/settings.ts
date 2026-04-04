@@ -15,7 +15,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     containerEl.empty();
 
     // Header
-    new Setting(containerEl).setName('General').setHeading();
+    new Setting(containerEl).setName('Emergency controls').setHeading();
 
     // Killswitch - prominent emergency stop
     const killswitchContainer = containerEl.createDiv({ cls: 'wonderland-killswitch' });
@@ -30,7 +30,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     new Setting(killswitchContainer)
       .setName('AI killswitch')
       .setDesc(this.plugin.settings.killswitchActive
-        ? 'All AI operations are STOPPED. Toggle off to resume.'
+        ? 'All AI operations are stopped. Toggle off to resume.'
         : 'Emergency stop for all AI operations (cancels in-flight requests, stops all automation)')
       .addToggle((toggle) =>
         toggle
@@ -75,7 +75,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
       const warningEl = containerEl.createDiv({ cls: 'wonderland-mobile-warning' });
       warningEl.createEl('strong', { text: 'Ollama not supported on mobile' });
       warningEl.createEl('p', {
-        text: 'Ollama runs locally and cannot be accessed from mobile devices. Please use OpenAI, Anthropic, or a cloud-based custom endpoint instead.',
+        text: 'Ollama runs locally and cannot be accessed from mobile devices. Please use a cloud-based provider instead.',
       });
     }
 
@@ -86,7 +86,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
         .setDesc('Your API key (stored locally, never sent anywhere except the AI provider)')
         .addText((text) =>
           text
-            .setPlaceholder('sk-...')
+            .setPlaceholder('Paste your API key')
             .setValue(this.plugin.settings.apiKey)
             .onChange(async (value) => {
               this.plugin.settings.apiKey = value;
@@ -142,7 +142,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
         .setDesc('Enter the model name')
         .addText((text) =>
           text
-            .setPlaceholder('gpt-4')
+            .setPlaceholder('Model name')
             .setValue(this.plugin.settings.model)
             .onChange(async (value) => {
               this.plugin.settings.model = value;
@@ -214,7 +214,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     new Setting(containerEl).setName('Image generation (experimental — untested)').setHeading();
 
     containerEl.createEl('p', {
-      text: '⚠️ This feature is experimental and has not been fully tested. Use with caution.',
+      text: 'This feature is experimental and has not been fully tested. Use with caution.',
       cls: 'setting-item-description',
     });
 
@@ -223,7 +223,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
       .setDesc('AI provider to use for generating images')
       .addDropdown((dropdown) =>
         dropdown
-          .addOption('openai', 'OpenAI DALL-E')
+          .addOption('openai', 'OpenAI (DALL-E)')
           .addOption('stability', 'Stability AI')
           .addOption('custom', 'Custom endpoint')
           .setValue(this.plugin.settings.imageProvider)
@@ -271,7 +271,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
       .addText((text) => {
         text.inputEl.type = 'password';
         return text
-          .setPlaceholder('sk-...')
+          .setPlaceholder('Paste your API key')
           .setValue(this.plugin.settings.imageApiKey)
           .onChange(async (value) => {
             this.plugin.settings.imageApiKey = value.trim();
@@ -282,10 +282,10 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     if (this.plugin.settings.imageProvider === 'custom') {
       new Setting(containerEl)
         .setName('Image API endpoint')
-        .setDesc('URL of your custom OpenAI-compatible image generation endpoint')
+        .setDesc('Endpoint URL for your custom image generation service')
         .addText((text) =>
           text
-            .setPlaceholder('https://your-endpoint/v1/images/generations')
+            .setPlaceholder('Your image generation endpoint URL')
             .setValue(this.plugin.settings.imageApiEndpoint)
             .onChange(async (value) => {
               this.plugin.settings.imageApiEndpoint = value.trim();
@@ -298,10 +298,10 @@ export class EvergreenAISettingTab extends PluginSettingTab {
       .setName('Image size')
       .addDropdown((dropdown) =>
         dropdown
-          .addOption('1024x1024', '1024×1024 (Square)')
-          .addOption('1792x1024', '1792×1024 (Wide)')
-          .addOption('1024x1792', '1024×1792 (Tall)')
-          .addOption('512x512', '512×512 (Small)')
+          .addOption('1024x1024', '1024×1024 (square)')
+          .addOption('1792x1024', '1792×1024 (wide)')
+          .addOption('1024x1792', '1024×1792 (tall)')
+          .addOption('512x512', '512×512 (small)')
           .setValue(this.plugin.settings.imageSize)
           .onChange(async (value) => {
             this.plugin.settings.imageSize = value as '1024x1024' | '1792x1024' | '1024x1792' | '512x512';
@@ -337,7 +337,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
       .setDesc('These instructions will be applied to all notes generated in any folder')
       .addTextArea((text) =>
         text
-          .setPlaceholder('e.g., "Always use British English spelling" or "Include practical examples in every note"')
+          .setPlaceholder('E.g., "always use a formal tone" or "include practical examples in every note"')
           .setValue(this.plugin.settings.globalInstructions || '')
           .onChange(async (value) => {
             this.plugin.settings.globalInstructions = value;
@@ -402,7 +402,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
       // Click to select
       folderItem.addEventListener('click', () => {
         this.plugin.settings.selectedFolderIndex = i;
-        this.plugin.saveSettings().then(() => this.display());
+        void this.plugin.saveSettings().then(() => this.display());
       });
 
       // Remove button
@@ -414,7 +414,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
         if (this.plugin.settings.selectedFolderIndex >= this.plugin.settings.wonderlandFolders.length) {
           this.plugin.settings.selectedFolderIndex = Math.max(0, this.plugin.settings.wonderlandFolders.length - 1);
         }
-        this.plugin.saveSettings().then(() => this.display());
+        void this.plugin.saveSettings().then(() => this.display());
       });
     }
   }
@@ -433,7 +433,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
         .setName('Add existing folder')
         .setDesc('Select an existing folder to enable')
         .addDropdown((dropdown) => {
-          dropdown.addOption('', '-- Select a folder --');
+          dropdown.addOption('', 'Select a folder');
           for (const folder of availableFolders) {
             dropdown.addOption(folder, folder);
           }
@@ -531,7 +531,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
         .setDesc('Describe the focus for this folder')
         .addTextArea((text) =>
           text
-            .setPlaceholder('e.g., "Focus on comparing different philosophical perspectives"')
+            .setPlaceholder('E.g., "focus on comparing different philosophical perspectives"')
             .setValue(folderSettings.customGoalDescription || '')
             .onChange(async (value) => {
               folderSettings.customGoalDescription = value;
@@ -551,7 +551,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
       .setDesc('Special instructions for how notes should be generated (e.g., "generate notes as step-by-step cooking guides" or "write in a formal academic style")')
       .addTextArea((text) =>
         text
-          .setPlaceholder('e.g., "Generate notes as step-by-step cooking guides with ingredients lists"')
+          .setPlaceholder('E.g., "generate notes as step-by-step cooking guides with ingredients lists"')
           .setValue(folderSettings.customInstructions || '')
           .onChange(async (value) => {
             folderSettings.customInstructions = value;
@@ -616,7 +616,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
         .setDesc('Comma-separated list of topics to personalize suggestions')
         .addText((text) =>
           text
-            .setPlaceholder('e.g., philosophy, AI, cooking, music')
+            .setPlaceholder('E.g., philosophy, AI, cooking, music')
             .setValue(folderSettings.userInterests || '')
             .onChange(async (value) => {
               folderSettings.userInterests = value;
@@ -935,7 +935,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
         const removeBtn = item.createEl('button', { text: '\u00d7', cls: 'remove-btn' });
         removeBtn.addEventListener('click', () => {
           folderSettings.enrichBlacklist = folderSettings.enrichBlacklist.filter(p => p !== notePath);
-          this.plugin.saveSettings().then(() => this.display());
+          void this.plugin.saveSettings().then(() => this.display());
         });
       }
 

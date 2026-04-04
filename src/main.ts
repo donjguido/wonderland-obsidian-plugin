@@ -348,7 +348,7 @@ export default class EvergreenAIPlugin extends Plugin {
         new NewWonderlandSetupModal(this.app, this, currentFolder.path, (settings) => {
           this.settings.wonderlandFolders.push(settings);
           this.settings.selectedFolderIndex = this.settings.wonderlandFolders.length - 1;
-          this.saveSettings().then(() => {
+          void this.saveSettings().then(() => {
             new Notice(`${currentFolder.path} is now enabled!`);
           });
         }).open();
@@ -384,7 +384,7 @@ export default class EvergreenAIPlugin extends Plugin {
         new NewWonderlandSetupModal(this.app, this, topLevelFolder, (settings) => {
           this.settings.wonderlandFolders.push(settings);
           this.settings.selectedFolderIndex = this.settings.wonderlandFolders.length - 1;
-          this.saveSettings().then(() => {
+          void this.saveSettings().then(() => {
             new Notice(`${topLevelFolder} is now enabled!`);
           });
         }).open();
@@ -442,7 +442,7 @@ export default class EvergreenAIPlugin extends Plugin {
         }
         const folderSettings = this.getWonderlandSettingsFor(activeFile.path);
         if (!folderSettings) {
-          new Notice('This note is not in a Wonderland folder');
+          new Notice('This note is not in an enabled folder');
           return;
         }
         await this.generateImageForNote(activeFile, folderSettings);
@@ -591,7 +591,7 @@ export default class EvergreenAIPlugin extends Plugin {
       setTimeout(() => {
         new WelcomeModal(this.app, this, () => {
           this.settings.hasShownWelcome = true;
-          this.saveSettings();
+          void this.saveSettings();
         }).open();
       }, 500);
     }
@@ -1672,7 +1672,7 @@ ${response.content}
       this.setupAllIntervals();
       this.updateKillswitchStatusBar();
       await this.saveData(this.settings);
-      new Notice('AI killswitch OFF - AI operations resumed');
+      new Notice('AI killswitch off - AI operations resumed');
     } else {
       // Activate killswitch
       this.settings.killswitchActive = true;
@@ -1680,7 +1680,7 @@ ${response.content}
       this.clearAllIntervals();
       this.updateKillswitchStatusBar();
       await this.saveData(this.settings);
-      new Notice('AI killswitch ON - all AI operations stopped');
+      new Notice('AI killswitch on - all AI operations stopped');
     }
   }
 
@@ -1698,7 +1698,7 @@ ${response.content}
   private updateKillswitchStatusBar(): void {
     if (!this.killswitchStatusBarItem) return;
     if (this.settings.killswitchActive) {
-      this.killswitchStatusBarItem.setText('AI: OFF');
+      this.killswitchStatusBarItem.setText('AI: off');
       this.killswitchStatusBarItem.addClass('wonderland-killswitch-active');
     } else {
       this.killswitchStatusBarItem.setText('');
@@ -1732,7 +1732,7 @@ ${response.content}
 
   private validateImageSettings(): boolean {
     if (!this.settings.imageModel) {
-      new Notice('No image model configured — check Image generation settings');
+      new Notice('No image model configured — check image generation settings');
       return false;
     }
     if (this.settings.imageProvider === 'custom' && !this.settings.imageApiEndpoint) {
@@ -1818,7 +1818,7 @@ ${response.content}
 
       // Decode base64 and write image file
       const binary = Uint8Array.from(atob(response.imageData), (c) => c.charCodeAt(0));
-      await this.app.vault.createBinary(imagePath, binary.buffer as ArrayBuffer);
+      await this.app.vault.createBinary(imagePath, binary.buffer);
 
       // Embed image in note
       const content = await this.app.vault.read(file);
@@ -1933,7 +1933,7 @@ class PromptModal extends Modal {
     this.textArea = contentEl.createEl('textarea', {
       cls: 'wonderland-prompt-input',
       attr: {
-        placeholder: 'e.g., "Why do we dream?" or "The science of curiosity"',
+        placeholder: 'E.g., "why do we dream?" or "the science of curiosity"',
         rows: '4',
       },
     });
@@ -1999,7 +1999,7 @@ class PromptModal extends Modal {
       this.close();
       new NewWonderlandSetupModal(this.app, this.plugin, folderPath, (settings) => {
         this.plugin.settings.wonderlandFolders.push(settings);
-        this.plugin.saveSettings().then(() => {
+        void this.plugin.saveSettings().then(() => {
           new Notice(`${folderPath} is now enabled!`);
           return this.plugin.generateNoteFromPrompt(prompt, folderPath);
         });
@@ -2109,7 +2109,7 @@ class NewWonderlandSetupModal extends Modal {
 
     instructionsContainer.createEl('label', { text: 'Custom instructions (optional):', cls: 'wonderland-setup-label' });
     instructionsContainer.createEl('small', {
-      text: 'E.g., "Generate notes as step-by-step cooking guides"',
+      text: 'E.g., "generate notes as step-by-step cooking guides"',
       cls: 'wonderland-setup-hint',
     });
 
@@ -2298,7 +2298,7 @@ class WelcomeModal extends Modal {
 
     // Footer
     const footer = contentEl.createDiv({ cls: 'wonderland-welcome-footer' });
-    footer.createEl('p', { text: '"Curiouser and curiouser!" - Alice', cls: 'wonderland-welcome-quote' });
+    footer.createEl('p', { text: 'Happy exploring!', cls: 'wonderland-welcome-quote' });
 
     // Support link - using DOM API instead of innerHTML
     const supportLink = footer.createEl('p', { cls: 'wonderland-welcome-support' });
