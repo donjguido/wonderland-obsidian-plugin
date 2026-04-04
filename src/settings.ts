@@ -15,7 +15,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     containerEl.empty();
 
     // Header
-    new Setting(containerEl).setName('General').setHeading();
+    new Setting(containerEl).setName('Emergency controls').setHeading();
 
     // Killswitch - prominent emergency stop
     const killswitchContainer = containerEl.createDiv({ cls: 'wonderland-killswitch' });
@@ -30,7 +30,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
     new Setting(killswitchContainer)
       .setName('AI killswitch')
       .setDesc(this.plugin.settings.killswitchActive
-        ? 'All AI operations are STOPPED. Toggle off to resume.'
+        ? 'All AI operations are stopped. Toggle off to resume.'
         : 'Emergency stop for all AI operations (cancels in-flight requests, stops all automation)')
       .addToggle((toggle) =>
         toggle
@@ -298,10 +298,10 @@ export class EvergreenAISettingTab extends PluginSettingTab {
       .setName('Image size')
       .addDropdown((dropdown) =>
         dropdown
-          .addOption('1024x1024', '1024×1024 (Square)')
-          .addOption('1792x1024', '1792×1024 (Wide)')
-          .addOption('1024x1792', '1024×1792 (Tall)')
-          .addOption('512x512', '512×512 (Small)')
+          .addOption('1024x1024', '1024×1024 (square)')
+          .addOption('1792x1024', '1792×1024 (wide)')
+          .addOption('1024x1792', '1024×1792 (tall)')
+          .addOption('512x512', '512×512 (small)')
           .setValue(this.plugin.settings.imageSize)
           .onChange(async (value) => {
             this.plugin.settings.imageSize = value as '1024x1024' | '1792x1024' | '1024x1792' | '512x512';
@@ -402,7 +402,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
       // Click to select
       folderItem.addEventListener('click', () => {
         this.plugin.settings.selectedFolderIndex = i;
-        this.plugin.saveSettings().then(() => this.display());
+        void this.plugin.saveSettings().then(() => this.display());
       });
 
       // Remove button
@@ -414,7 +414,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
         if (this.plugin.settings.selectedFolderIndex >= this.plugin.settings.wonderlandFolders.length) {
           this.plugin.settings.selectedFolderIndex = Math.max(0, this.plugin.settings.wonderlandFolders.length - 1);
         }
-        this.plugin.saveSettings().then(() => this.display());
+        void this.plugin.saveSettings().then(() => this.display());
       });
     }
   }
@@ -935,7 +935,7 @@ export class EvergreenAISettingTab extends PluginSettingTab {
         const removeBtn = item.createEl('button', { text: '\u00d7', cls: 'remove-btn' });
         removeBtn.addEventListener('click', () => {
           folderSettings.enrichBlacklist = folderSettings.enrichBlacklist.filter(p => p !== notePath);
-          this.plugin.saveSettings().then(() => this.display());
+          void this.plugin.saveSettings().then(() => this.display());
         });
       }
 

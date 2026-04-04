@@ -140,7 +140,7 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
     var _a, _b;
     const { containerEl } = this;
     containerEl.empty();
-    new import_obsidian.Setting(containerEl).setName("General").setHeading();
+    new import_obsidian.Setting(containerEl).setName("Emergency controls").setHeading();
     const killswitchContainer = containerEl.createDiv({ cls: "wonderland-killswitch" });
     killswitchContainer.style.cssText = `
       padding: 12px 16px;
@@ -149,7 +149,7 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
       border: 2px solid ${this.plugin.settings.killswitchActive ? "var(--text-error)" : "var(--background-modifier-border)"};
       background: ${this.plugin.settings.killswitchActive ? "var(--background-modifier-error)" : "var(--background-secondary)"};
     `;
-    new import_obsidian.Setting(killswitchContainer).setName("AI killswitch").setDesc(this.plugin.settings.killswitchActive ? "All AI operations are STOPPED. Toggle off to resume." : "Emergency stop for all AI operations (cancels in-flight requests, stops all automation)").addToggle(
+    new import_obsidian.Setting(killswitchContainer).setName("AI killswitch").setDesc(this.plugin.settings.killswitchActive ? "All AI operations are stopped. Toggle off to resume." : "Emergency stop for all AI operations (cancels in-flight requests, stops all automation)").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.killswitchActive).onChange(async () => {
         await this.plugin.toggleKillswitch();
         this.display();
@@ -306,7 +306,7 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
       );
     }
     new import_obsidian.Setting(containerEl).setName("Image size").addDropdown(
-      (dropdown) => dropdown.addOption("1024x1024", "1024\xD71024 (Square)").addOption("1792x1024", "1792\xD71024 (Wide)").addOption("1024x1792", "1024\xD71792 (Tall)").addOption("512x512", "512\xD7512 (Small)").setValue(this.plugin.settings.imageSize).onChange(async (value) => {
+      (dropdown) => dropdown.addOption("1024x1024", "1024\xD71024 (square)").addOption("1792x1024", "1792\xD71024 (wide)").addOption("1024x1792", "1024\xD71792 (tall)").addOption("512x512", "512\xD7512 (small)").setValue(this.plugin.settings.imageSize).onChange(async (value) => {
         this.plugin.settings.imageSize = value;
         await this.plugin.saveSettings();
       })
@@ -364,7 +364,7 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
       }
       folderItem.addEventListener("click", () => {
         this.plugin.settings.selectedFolderIndex = i;
-        this.plugin.saveSettings().then(() => this.display());
+        void this.plugin.saveSettings().then(() => this.display());
       });
       const removeBtn = folderItem.createEl("button", { text: "\xD7", cls: "remove-btn" });
       removeBtn.addEventListener("click", (e) => {
@@ -373,7 +373,7 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
         if (this.plugin.settings.selectedFolderIndex >= this.plugin.settings.wonderlandFolders.length) {
           this.plugin.settings.selectedFolderIndex = Math.max(0, this.plugin.settings.wonderlandFolders.length - 1);
         }
-        this.plugin.saveSettings().then(() => this.display());
+        void this.plugin.saveSettings().then(() => this.display());
       });
     }
   }
@@ -664,7 +664,7 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
         const removeBtn = item.createEl("button", { text: "\xD7", cls: "remove-btn" });
         removeBtn.addEventListener("click", () => {
           folderSettings.enrichBlacklist = folderSettings.enrichBlacklist.filter((p) => p !== notePath);
-          this.plugin.saveSettings().then(() => this.display());
+          void this.plugin.saveSettings().then(() => this.display());
         });
       }
       new import_obsidian.Setting(blacklistContainer).setName("Clear blacklist").addButton(
@@ -1907,7 +1907,7 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
         new NewWonderlandSetupModal(this.app, this, currentFolder.path, (settings) => {
           this.settings.wonderlandFolders.push(settings);
           this.settings.selectedFolderIndex = this.settings.wonderlandFolders.length - 1;
-          this.saveSettings().then(() => {
+          void this.saveSettings().then(() => {
             new import_obsidian3.Notice(`${currentFolder.path} is now enabled!`);
           });
         }).open();
@@ -1935,7 +1935,7 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
         new NewWonderlandSetupModal(this.app, this, topLevelFolder, (settings) => {
           this.settings.wonderlandFolders.push(settings);
           this.settings.selectedFolderIndex = this.settings.wonderlandFolders.length - 1;
-          this.saveSettings().then(() => {
+          void this.saveSettings().then(() => {
             new import_obsidian3.Notice(`${topLevelFolder} is now enabled!`);
           });
         }).open();
@@ -1982,7 +1982,7 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
         }
         const folderSettings = this.getWonderlandSettingsFor(activeFile.path);
         if (!folderSettings) {
-          new import_obsidian3.Notice("This note is not in a Wonderland folder");
+          new import_obsidian3.Notice("This note is not in an enabled folder");
           return;
         }
         await this.generateImageForNote(activeFile, folderSettings);
@@ -2087,7 +2087,7 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
       setTimeout(() => {
         new WelcomeModal(this.app, this, () => {
           this.settings.hasShownWelcome = true;
-          this.saveSettings();
+          void this.saveSettings();
         }).open();
       }, 500);
     }
@@ -2931,14 +2931,14 @@ Which folder should this note go in? Respond with ONLY the folder name.`;
       this.setupAllIntervals();
       this.updateKillswitchStatusBar();
       await this.saveData(this.settings);
-      new import_obsidian3.Notice("AI killswitch OFF - AI operations resumed");
+      new import_obsidian3.Notice("AI killswitch off - AI operations resumed");
     } else {
       this.settings.killswitchActive = true;
       this.aiService.kill();
       this.clearAllIntervals();
       this.updateKillswitchStatusBar();
       await this.saveData(this.settings);
-      new import_obsidian3.Notice("AI killswitch ON - all AI operations stopped");
+      new import_obsidian3.Notice("AI killswitch on - all AI operations stopped");
     }
   }
   clearAllIntervals() {
@@ -2982,7 +2982,7 @@ Which folder should this note go in? Respond with ONLY the folder name.`;
   }
   validateImageSettings() {
     if (!this.settings.imageModel) {
-      new import_obsidian3.Notice("No image model configured \u2014 check Image generation settings");
+      new import_obsidian3.Notice("No image model configured \u2014 check image generation settings");
       return false;
     }
     if (this.settings.imageProvider === "custom" && !this.settings.imageApiEndpoint) {
@@ -3184,7 +3184,7 @@ var PromptModal = class extends import_obsidian3.Modal {
       this.close();
       new NewWonderlandSetupModal(this.app, this.plugin, folderPath, (settings) => {
         this.plugin.settings.wonderlandFolders.push(settings);
-        this.plugin.saveSettings().then(() => {
+        void this.plugin.saveSettings().then(() => {
           new import_obsidian3.Notice(`${folderPath} is now enabled!`);
           return this.plugin.generateNoteFromPrompt(prompt, folderPath);
         });
