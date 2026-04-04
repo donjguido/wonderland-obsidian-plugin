@@ -1698,7 +1698,7 @@ ${response.content}
   private updateKillswitchStatusBar(): void {
     if (!this.killswitchStatusBarItem) return;
     if (this.settings.killswitchActive) {
-      this.killswitchStatusBarItem.setText('AI: OFF');
+      this.killswitchStatusBarItem.setText('AI: off');
       this.killswitchStatusBarItem.addClass('wonderland-killswitch-active');
     } else {
       this.killswitchStatusBarItem.setText('');
@@ -1933,7 +1933,7 @@ class PromptModal extends Modal {
     this.textArea = contentEl.createEl('textarea', {
       cls: 'wonderland-prompt-input',
       attr: {
-        placeholder: 'e.g., "Why do we dream?" or "The science of curiosity"',
+        placeholder: 'E.g., "why do we dream?" or "the science of curiosity"',
         rows: '4',
       },
     });
@@ -2109,7 +2109,7 @@ class NewWonderlandSetupModal extends Modal {
 
     instructionsContainer.createEl('label', { text: 'Custom instructions (optional):', cls: 'wonderland-setup-label' });
     instructionsContainer.createEl('small', {
-      text: 'E.g., "Generate notes as step-by-step cooking guides"',
+      text: 'E.g., "generate notes as step-by-step cooking guides"',
       cls: 'wonderland-setup-hint',
     });
 
@@ -2298,7 +2298,7 @@ class WelcomeModal extends Modal {
 
     // Footer
     const footer = contentEl.createDiv({ cls: 'wonderland-welcome-footer' });
-    footer.createEl('p', { text: '"Curiouser and curiouser!" - Alice', cls: 'wonderland-welcome-quote' });
+    footer.createEl('p', { text: 'Happy exploring!', cls: 'wonderland-welcome-quote' });
 
     // Support link - using DOM API instead of innerHTML
     const supportLink = footer.createEl('p', { cls: 'wonderland-welcome-support' });

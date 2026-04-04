@@ -179,12 +179,12 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
       const warningEl = containerEl.createDiv({ cls: "wonderland-mobile-warning" });
       warningEl.createEl("strong", { text: "Ollama not supported on mobile" });
       warningEl.createEl("p", {
-        text: "Ollama runs locally and cannot be accessed from mobile devices. Please use OpenAI, Anthropic, or a cloud-based custom endpoint instead."
+        text: "Ollama runs locally and cannot be accessed from mobile devices. Please use a cloud-based provider instead."
       });
     }
     if (this.plugin.settings.aiProvider !== "ollama") {
       new import_obsidian.Setting(containerEl).setName("API key").setDesc("Your API key (stored locally, never sent anywhere except the AI provider)").addText(
-        (text) => text.setPlaceholder("sk-...").setValue(this.plugin.settings.apiKey).onChange(async (value) => {
+        (text) => text.setPlaceholder("Paste your API key").setValue(this.plugin.settings.apiKey).onChange(async (value) => {
           this.plugin.settings.apiKey = value;
           await this.plugin.saveSettings();
         })
@@ -217,7 +217,7 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
       });
     } else {
       new import_obsidian.Setting(containerEl).setName("Model").setDesc("Enter the model name").addText(
-        (text) => text.setPlaceholder("gpt-4").setValue(this.plugin.settings.model).onChange(async (value) => {
+        (text) => text.setPlaceholder("Model name").setValue(this.plugin.settings.model).onChange(async (value) => {
           this.plugin.settings.model = value;
           await this.plugin.saveSettings();
         })
@@ -257,11 +257,11 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
     );
     new import_obsidian.Setting(containerEl).setName("Image generation (experimental \u2014 untested)").setHeading();
     containerEl.createEl("p", {
-      text: "\u26A0\uFE0F This feature is experimental and has not been fully tested. Use with caution.",
+      text: "This feature is experimental and has not been fully tested. Use with caution.",
       cls: "setting-item-description"
     });
     new import_obsidian.Setting(containerEl).setName("Image provider").setDesc("AI provider to use for generating images").addDropdown(
-      (dropdown) => dropdown.addOption("openai", "OpenAI DALL-E").addOption("stability", "Stability AI").addOption("custom", "Custom endpoint").setValue(this.plugin.settings.imageProvider).onChange(async (value) => {
+      (dropdown) => dropdown.addOption("openai", "OpenAI (DALL-E)").addOption("stability", "Stability AI").addOption("custom", "Custom endpoint").setValue(this.plugin.settings.imageProvider).onChange(async (value) => {
         var _a2;
         this.plugin.settings.imageProvider = value;
         const models = (_a2 = IMAGE_MODEL_DEFAULTS[value]) == null ? void 0 : _a2.models;
@@ -292,14 +292,14 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
     }
     new import_obsidian.Setting(containerEl).setName("Image API key").setDesc("Leave blank to use your main API key above").addText((text) => {
       text.inputEl.type = "password";
-      return text.setPlaceholder("sk-...").setValue(this.plugin.settings.imageApiKey).onChange(async (value) => {
+      return text.setPlaceholder("Paste your API key").setValue(this.plugin.settings.imageApiKey).onChange(async (value) => {
         this.plugin.settings.imageApiKey = value.trim();
         await this.plugin.saveSettings();
       });
     });
     if (this.plugin.settings.imageProvider === "custom") {
-      new import_obsidian.Setting(containerEl).setName("Image API endpoint").setDesc("URL of your custom OpenAI-compatible image generation endpoint").addText(
-        (text) => text.setPlaceholder("https://your-endpoint/v1/images/generations").setValue(this.plugin.settings.imageApiEndpoint).onChange(async (value) => {
+      new import_obsidian.Setting(containerEl).setName("Image API endpoint").setDesc("Endpoint URL for your custom image generation service").addText(
+        (text) => text.setPlaceholder("Your image generation endpoint URL").setValue(this.plugin.settings.imageApiEndpoint).onChange(async (value) => {
           this.plugin.settings.imageApiEndpoint = value.trim();
           await this.plugin.saveSettings();
         })
@@ -323,7 +323,7 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
       cls: "setting-item-description"
     });
     new import_obsidian.Setting(containerEl).setName("Global instructions").setDesc("These instructions will be applied to all notes generated in any folder").addTextArea(
-      (text) => text.setPlaceholder('e.g., "Always use British English spelling" or "Include practical examples in every note"').setValue(this.plugin.settings.globalInstructions || "").onChange(async (value) => {
+      (text) => text.setPlaceholder('E.g., "always use a formal tone" or "include practical examples in every note"').setValue(this.plugin.settings.globalInstructions || "").onChange(async (value) => {
         this.plugin.settings.globalInstructions = value;
         await this.plugin.saveSettings();
       })
@@ -383,7 +383,7 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
     const availableFolders = allFolders.filter((f) => !configuredPaths.includes(f));
     if (availableFolders.length > 0) {
       new import_obsidian.Setting(containerEl).setName("Add existing folder").setDesc("Select an existing folder to enable").addDropdown((dropdown) => {
-        dropdown.addOption("", "-- Select a folder --");
+        dropdown.addOption("", "Select a folder");
         for (const folder of availableFolders) {
           dropdown.addOption(folder, folder);
         }
@@ -448,7 +448,7 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
     );
     if (folderSettings.folderGoal === "custom") {
       new import_obsidian.Setting(containerEl).setName("Custom goal description").setDesc("Describe the focus for this folder").addTextArea(
-        (text) => text.setPlaceholder('e.g., "Focus on comparing different philosophical perspectives"').setValue(folderSettings.customGoalDescription || "").onChange(async (value) => {
+        (text) => text.setPlaceholder('E.g., "focus on comparing different philosophical perspectives"').setValue(folderSettings.customGoalDescription || "").onChange(async (value) => {
           folderSettings.customGoalDescription = value;
           await this.plugin.saveSettings();
         })
@@ -458,7 +458,7 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
     }
     new import_obsidian.Setting(containerEl).setName("Custom instructions").setHeading();
     new import_obsidian.Setting(containerEl).setName("Custom instructions for this folder").setDesc('Special instructions for how notes should be generated (e.g., "generate notes as step-by-step cooking guides" or "write in a formal academic style")').addTextArea(
-      (text) => text.setPlaceholder('e.g., "Generate notes as step-by-step cooking guides with ingredients lists"').setValue(folderSettings.customInstructions || "").onChange(async (value) => {
+      (text) => text.setPlaceholder('E.g., "generate notes as step-by-step cooking guides with ingredients lists"').setValue(folderSettings.customInstructions || "").onChange(async (value) => {
         folderSettings.customInstructions = value;
         await this.plugin.saveSettings();
       })
@@ -491,7 +491,7 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
     );
     if (folderSettings.customizeSuggestions) {
       new import_obsidian.Setting(containerEl).setName("Your interests").setDesc("Comma-separated list of topics to personalize suggestions").addText(
-        (text) => text.setPlaceholder("e.g., philosophy, AI, cooking, music").setValue(folderSettings.userInterests || "").onChange(async (value) => {
+        (text) => text.setPlaceholder("E.g., philosophy, AI, cooking, music").setValue(folderSettings.userInterests || "").onChange(async (value) => {
           folderSettings.userInterests = value;
           await this.plugin.saveSettings();
         })
@@ -2955,7 +2955,7 @@ Which folder should this note go in? Respond with ONLY the folder name.`;
     if (!this.killswitchStatusBarItem)
       return;
     if (this.settings.killswitchActive) {
-      this.killswitchStatusBarItem.setText("AI: OFF");
+      this.killswitchStatusBarItem.setText("AI: off");
       this.killswitchStatusBarItem.addClass("wonderland-killswitch-active");
     } else {
       this.killswitchStatusBarItem.setText("");
@@ -3131,7 +3131,7 @@ var PromptModal = class extends import_obsidian3.Modal {
     this.textArea = contentEl.createEl("textarea", {
       cls: "wonderland-prompt-input",
       attr: {
-        placeholder: 'e.g., "Why do we dream?" or "The science of curiosity"',
+        placeholder: 'E.g., "why do we dream?" or "the science of curiosity"',
         rows: "4"
       }
     });
@@ -3262,7 +3262,7 @@ var NewWonderlandSetupModal = class extends import_obsidian3.Modal {
     const instructionsContainer = contentEl.createDiv({ cls: "wonderland-setup-section" });
     instructionsContainer.createEl("label", { text: "Custom instructions (optional):", cls: "wonderland-setup-label" });
     instructionsContainer.createEl("small", {
-      text: 'E.g., "Generate notes as step-by-step cooking guides"',
+      text: 'E.g., "generate notes as step-by-step cooking guides"',
       cls: "wonderland-setup-hint"
     });
     const instructionsInput = instructionsContainer.createEl("textarea", {
@@ -3404,7 +3404,7 @@ var WelcomeModal = class extends import_obsidian3.Modal {
       }
     });
     const footer = contentEl.createDiv({ cls: "wonderland-welcome-footer" });
-    footer.createEl("p", { text: '"Curiouser and curiouser!" - Alice', cls: "wonderland-welcome-quote" });
+    footer.createEl("p", { text: "Happy exploring!", cls: "wonderland-welcome-quote" });
     const supportLink = footer.createEl("p", { cls: "wonderland-welcome-support" });
     supportLink.createSpan({ text: "Enjoying the plugin? " });
     const link = supportLink.createEl("a", {
