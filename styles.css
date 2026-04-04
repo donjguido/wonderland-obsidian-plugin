@@ -527,6 +527,22 @@
   gap: 0.5em;
 }
 
+/* Killswitch status bar indicator */
+.wonderland-killswitch-active {
+  color: var(--text-error);
+  font-weight: bold;
+}
+
+/* Setup modal custom goal container */
+.wonderland-custom-goal-container {
+  display: none;
+  margin-top: 0.5em;
+}
+
+.wonderland-custom-goal-container.is-visible {
+  display: block;
+}
+
 /* Prompt modal folder selector */
 .wonderland-folder-select select {
   margin-right: 0.5em;

@@ -140,7 +140,7 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
     var _a, _b;
     const { containerEl } = this;
     containerEl.empty();
-    new import_obsidian.Setting(containerEl).setName("Wonderland settings").setHeading();
+    new import_obsidian.Setting(containerEl).setName("General").setHeading();
     const killswitchContainer = containerEl.createDiv({ cls: "wonderland-killswitch" });
     killswitchContainer.style.cssText = `
       padding: 12px 16px;
@@ -149,7 +149,7 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
       border: 2px solid ${this.plugin.settings.killswitchActive ? "var(--text-error)" : "var(--background-modifier-border)"};
       background: ${this.plugin.settings.killswitchActive ? "var(--background-modifier-error)" : "var(--background-secondary)"};
     `;
-    new import_obsidian.Setting(killswitchContainer).setName("AI Killswitch").setDesc(this.plugin.settings.killswitchActive ? "All AI operations are STOPPED. Toggle off to resume." : "Emergency stop for all AI operations (cancels in-flight requests, stops all automation)").addToggle(
+    new import_obsidian.Setting(killswitchContainer).setName("AI killswitch").setDesc(this.plugin.settings.killswitchActive ? "All AI operations are STOPPED. Toggle off to resume." : "Emergency stop for all AI operations (cancels in-flight requests, stops all automation)").addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.killswitchActive).onChange(async () => {
         await this.plugin.toggleKillswitch();
         this.display();
@@ -160,8 +160,8 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
       (dropdown) => dropdown.addOptions({
         openai: "OpenAI",
         anthropic: "Anthropic (Claude)",
-        ollama: "Ollama (Local)",
-        custom: "Custom Endpoint"
+        ollama: "Ollama (local)",
+        custom: "Custom endpoint"
       }).setValue(this.plugin.settings.aiProvider).onChange(async (value) => {
         this.plugin.settings.aiProvider = value;
         const defaults = PROVIDER_DEFAULTS[value];
@@ -319,10 +319,10 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
     );
     new import_obsidian.Setting(containerEl).setName("Global instructions").setHeading();
     containerEl.createEl("p", {
-      text: "Instructions that apply to all Wonderland folders. Folder-specific instructions will be applied after these.",
+      text: "Instructions that apply to all folders. Folder-specific instructions will be applied after these.",
       cls: "setting-item-description"
     });
-    new import_obsidian.Setting(containerEl).setName("Global instructions").setDesc("These instructions will be applied to all notes generated in any Wonderland folder").addTextArea(
+    new import_obsidian.Setting(containerEl).setName("Global instructions").setDesc("These instructions will be applied to all notes generated in any folder").addTextArea(
       (text) => text.setPlaceholder('e.g., "Always use British English spelling" or "Include practical examples in every note"').setValue(this.plugin.settings.globalInstructions || "").onChange(async (value) => {
         this.plugin.settings.globalInstructions = value;
         await this.plugin.saveSettings();
@@ -330,9 +330,9 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
     ).then((setting) => {
       setting.settingEl.addClass("wonderland-settings-textarea");
     });
-    new import_obsidian.Setting(containerEl).setName("Wonderland folders").setHeading();
+    new import_obsidian.Setting(containerEl).setName("Folders").setHeading();
     containerEl.createEl("p", {
-      text: "Select existing folders or type a name to create new wonderlands of knowledge. Each folder can have its own settings.",
+      text: "Select existing folders or type a name to create new folders. Each folder can have its own settings.",
       cls: "setting-item-description"
     });
     this.renderConfiguredFolders(containerEl);
@@ -345,7 +345,7 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
     const foldersContainer = containerEl.createDiv({ cls: "wonderland-folders-list" });
     if (this.plugin.settings.wonderlandFolders.length === 0) {
       foldersContainer.createEl("p", {
-        text: "No Wonderland folders configured yet. Add one below.",
+        text: "No folders configured yet. Add one below.",
         cls: "setting-item-description"
       });
       return;
@@ -362,20 +362,18 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
       if (isSelected) {
         folderInfo.createSpan({ text: " (editing)", cls: "setting-item-description" });
       }
-      folderItem.addEventListener("click", async () => {
+      folderItem.addEventListener("click", () => {
         this.plugin.settings.selectedFolderIndex = i;
-        await this.plugin.saveSettings();
-        this.display();
+        this.plugin.saveSettings().then(() => this.display());
       });
       const removeBtn = folderItem.createEl("button", { text: "\xD7", cls: "remove-btn" });
-      removeBtn.addEventListener("click", async (e) => {
+      removeBtn.addEventListener("click", (e) => {
         e.stopPropagation();
         this.plugin.settings.wonderlandFolders.splice(i, 1);
         if (this.plugin.settings.selectedFolderIndex >= this.plugin.settings.wonderlandFolders.length) {
           this.plugin.settings.selectedFolderIndex = Math.max(0, this.plugin.settings.wonderlandFolders.length - 1);
         }
-        await this.plugin.saveSettings();
-        this.display();
+        this.plugin.saveSettings().then(() => this.display());
       });
     }
   }
@@ -384,7 +382,7 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
     const configuredPaths = this.plugin.settings.wonderlandFolders.map((f) => f.path);
     const availableFolders = allFolders.filter((f) => !configuredPaths.includes(f));
     if (availableFolders.length > 0) {
-      new import_obsidian.Setting(containerEl).setName("Add existing folder").setDesc("Select an existing folder to become a Wonderland").addDropdown((dropdown) => {
+      new import_obsidian.Setting(containerEl).setName("Add existing folder").setDesc("Select an existing folder to enable").addDropdown((dropdown) => {
         dropdown.addOption("", "-- Select a folder --");
         for (const folder of availableFolders) {
           dropdown.addOption(folder, folder);
@@ -401,7 +399,7 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
       });
     }
     let newFolderName = "";
-    new import_obsidian.Setting(containerEl).setName("Create new Wonderland folder").setDesc("Type a folder name to create a new Wonderland (will be created if it doesn't exist)").addText(
+    new import_obsidian.Setting(containerEl).setName("Create new folder").setDesc("Type a folder name to create a new folder (will be created if it doesn't exist)").addText(
       (text) => text.setPlaceholder("e.g., Research/AI or Personal Notes").onChange((value) => {
         newFolderName = value.trim();
       })
@@ -432,16 +430,16 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
     const folderSettings = this.plugin.selectedFolderSettings;
     if (!folderSettings)
       return;
-    new import_obsidian.Setting(containerEl).setName(`Settings for: ${folderSettings.path}`).setHeading();
+    new import_obsidian.Setting(containerEl).setName(folderSettings.path).setHeading();
     new import_obsidian.Setting(containerEl).setName("Folder goal").setHeading();
-    new import_obsidian.Setting(containerEl).setName("Content focus").setDesc("How AI should approach generating content for this Wonderland").addDropdown(
+    new import_obsidian.Setting(containerEl).setName("Content focus").setDesc("How AI should approach generating content for this folder").addDropdown(
       (dropdown) => dropdown.addOptions({
-        learn: "Learning - Understanding and retention",
-        action: "Action-oriented - Practical steps and how-to guides",
-        reflect: "Critical reflection - Deep thinking and analysis",
-        research: "Research - Evidence-based with citations",
-        creative: "Creative - Imaginative connections",
-        custom: "Custom - Define your own focus"
+        learn: "Learning - understanding and retention",
+        action: "Action-oriented - practical steps and how-to guides",
+        reflect: "Critical reflection - deep thinking and analysis",
+        research: "Research - evidence-based with citations",
+        creative: "Creative - imaginative connections",
+        custom: "Custom - define your own focus"
       }).setValue(folderSettings.folderGoal || "learn").onChange(async (value) => {
         folderSettings.folderGoal = value;
         await this.plugin.saveSettings();
@@ -449,7 +447,7 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
       })
     );
     if (folderSettings.folderGoal === "custom") {
-      new import_obsidian.Setting(containerEl).setName("Custom goal description").setDesc("Describe the focus for this Wonderland").addTextArea(
+      new import_obsidian.Setting(containerEl).setName("Custom goal description").setDesc("Describe the focus for this folder").addTextArea(
         (text) => text.setPlaceholder('e.g., "Focus on comparing different philosophical perspectives"').setValue(folderSettings.customGoalDescription || "").onChange(async (value) => {
           folderSettings.customGoalDescription = value;
           await this.plugin.saveSettings();
@@ -459,7 +457,7 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
       });
     }
     new import_obsidian.Setting(containerEl).setName("Custom instructions").setHeading();
-    new import_obsidian.Setting(containerEl).setName("Custom instructions for this Wonderland").setDesc('Special instructions for how notes should be generated (e.g., "Generate notes as step-by-step cooking guides" or "Write in a formal academic style")').addTextArea(
+    new import_obsidian.Setting(containerEl).setName("Custom instructions for this folder").setDesc('Special instructions for how notes should be generated (e.g., "generate notes as step-by-step cooking guides" or "write in a formal academic style")').addTextArea(
       (text) => text.setPlaceholder('e.g., "Generate notes as step-by-step cooking guides with ingredients lists"').setValue(folderSettings.customInstructions || "").onChange(async (value) => {
         folderSettings.customInstructions = value;
         await this.plugin.saveSettings();
@@ -484,7 +482,7 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
       );
     }
     new import_obsidian.Setting(containerEl).setName("Personalized suggestions").setHeading();
-    new import_obsidian.Setting(containerEl).setName('Customize "Down the rabbit hole" suggestions').setDesc("Base exploration suggestions on your interests").addToggle(
+    new import_obsidian.Setting(containerEl).setName('Customize "down the rabbit hole" suggestions').setDesc("Base exploration suggestions on your interests").addToggle(
       (toggle) => toggle.setValue(folderSettings.customizeSuggestions || false).onChange(async (value) => {
         folderSettings.customizeSuggestions = value;
         await this.plugin.saveSettings();
@@ -649,7 +647,7 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
     );
     new import_obsidian.Setting(containerEl).setName("Enrichment blacklist").setHeading();
     containerEl.createEl("p", {
-      text: 'Notes on this list will be excluded from automatic enrichment. Use the "Toggle enrichment blacklist" command to add/remove notes.',
+      text: 'Notes on this list will be excluded from automatic enrichment. Use the "toggle enrichment blacklist" command to add/remove notes.',
       cls: "setting-item-description"
     });
     const blacklistCount = ((_a = folderSettings.enrichBlacklist) == null ? void 0 : _a.length) || 0;
@@ -664,10 +662,9 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
         const noteBasename = ((_b = notePath.split("/").pop()) == null ? void 0 : _b.replace(".md", "")) || notePath;
         item.createSpan({ text: noteBasename });
         const removeBtn = item.createEl("button", { text: "\xD7", cls: "remove-btn" });
-        removeBtn.addEventListener("click", async () => {
+        removeBtn.addEventListener("click", () => {
           folderSettings.enrichBlacklist = folderSettings.enrichBlacklist.filter((p) => p !== notePath);
-          await this.plugin.saveSettings();
-          this.display();
+          this.plugin.saveSettings().then(() => this.display());
         });
       }
       new import_obsidian.Setting(blacklistContainer).setName("Clear blacklist").addButton(
@@ -679,13 +676,13 @@ var EvergreenAISettingTab = class extends import_obsidian.PluginSettingTab {
       );
     } else {
       containerEl.createEl("p", {
-        text: 'No notes are currently blacklisted. Open a note and use the "Toggle enrichment blacklist" command to add it.',
+        text: 'No notes are currently blacklisted. Open a note and use the "toggle enrichment blacklist" command to add it.',
         cls: "setting-item-description"
       });
     }
     new import_obsidian.Setting(containerEl).setName("Rabbit holes index").setHeading();
     containerEl.createEl("p", {
-      text: "The Rabbit Holes Index shows all unresolved links (unexplored paths) in this Wonderland.",
+      text: "The rabbit holes index shows all unresolved links (unexplored paths) in this folder.",
       cls: "setting-item-description"
     });
     new import_obsidian.Setting(containerEl).setName("Enable rabbit holes index").setDesc("Create and maintain an index of all unresolved links").addToggle(
@@ -1054,7 +1051,7 @@ var AIService = class {
         },
         (error) => {
           signal.removeEventListener("abort", onAbort);
-          reject(error);
+          reject(error instanceof Error ? error : new Error(String(error)));
         }
       );
     });
@@ -1115,12 +1112,12 @@ var AIService = class {
     let retryable = false;
     let retryAfter;
     const errorObj = body.error;
-    if (errorObj == null ? void 0 : errorObj.message) {
-      message = String(errorObj.message);
-    } else if (body.message) {
-      message = String(body.message);
-    } else if (body.detail) {
-      message = String(body.detail);
+    if ((errorObj == null ? void 0 : errorObj.message) && typeof errorObj.message === "string") {
+      message = errorObj.message;
+    } else if (body.message && typeof body.message === "string") {
+      message = body.message;
+    } else if (body.detail && typeof body.detail === "string") {
+      message = body.detail;
     }
     switch (status) {
       case 400:
@@ -1720,7 +1717,7 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
   }
   // Get the rabbit holes index name for a folder
   getRabbitHolesIndexName(folderPath) {
-    const folderName = folderPath.split("/").pop() || "Wonderland";
+    const folderName = folderPath.split("/").pop() || "Notes";
     return `${folderName} Rabbit Holes`;
   }
   // Handle folder renames - update Wonderland folder paths in settings
@@ -1735,7 +1732,7 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
     }
     if (updated) {
       await this.saveSettings();
-      new import_obsidian3.Notice(`Wonderland folder path updated: ${newPath}`);
+      new import_obsidian3.Notice(`Folder path updated: ${newPath}`);
     }
   }
   // Handle folder deletion - remove deleted Wonderland folders from settings
@@ -1757,7 +1754,7 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
         this.lastActiveWonderlandFolder = null;
       }
       await this.saveSettings();
-      new import_obsidian3.Notice(`Wonderland folder removed: ${deletedPath}`);
+      new import_obsidian3.Notice(`Folder removed: ${deletedPath}`);
     }
   }
   // Get the current folder path from the active file
@@ -1799,11 +1796,11 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
     }
     this.killswitchStatusBarItem = this.addStatusBarItem();
     this.updateKillswitchStatusBar();
-    this.addRibbonIcon("rabbit", "Enter Wonderland", () => {
+    this.addRibbonIcon("rabbit", "Explore a topic", () => {
       this.openPromptModal();
     });
     this.addCommand({
-      id: "enter-wonderland",
+      id: "explore-topic",
       name: "Explore a topic",
       callback: () => {
         this.openPromptModal();
@@ -1832,7 +1829,7 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
         }
         const folderSettings = this.getWonderlandSettingsFor(activeFile.path);
         if (!folderSettings) {
-          new import_obsidian3.Notice("This note is not in a Wonderland folder");
+          new import_obsidian3.Notice("This note is not in an enabled folder");
           return;
         }
         await this.generateContentForNote(activeFile, folderSettings);
@@ -1840,7 +1837,7 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
     });
     this.addCommand({
       id: "enrich-note",
-      name: "Enrich note with Wonderland knowledge",
+      name: "Enrich note with folder knowledge",
       callback: async () => {
         const activeFile = this.app.workspace.getActiveFile();
         if (!activeFile) {
@@ -1849,24 +1846,24 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
         }
         const folderSettings = this.getWonderlandSettingsFor(activeFile.path);
         if (!folderSettings) {
-          new import_obsidian3.Notice("This note is not in a Wonderland folder");
+          new import_obsidian3.Notice("This note is not in an enabled folder");
           return;
         }
         await this.enrichNoteWithKnowledge(activeFile, folderSettings);
       }
     });
     this.addCommand({
-      id: "organize-wonderland",
-      name: "Organize current Wonderland into subfolders",
+      id: "organize-folder",
+      name: "Organize current folder into subfolders",
       callback: async () => {
         const activeFile = this.app.workspace.getActiveFile();
         if (!activeFile) {
-          new import_obsidian3.Notice("No active note - open a note in a Wonderland folder first");
+          new import_obsidian3.Notice("No active note - open a note in an enabled folder first");
           return;
         }
         const folderSettings = this.getWonderlandSettingsFor(activeFile.path);
         if (!folderSettings) {
-          new import_obsidian3.Notice("This note is not in a Wonderland folder");
+          new import_obsidian3.Notice("This note is not in an enabled folder");
           return;
         }
         await this.organizeWonderlandFolder(folderSettings);
@@ -1878,21 +1875,21 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
       callback: async () => {
         const activeFile = this.app.workspace.getActiveFile();
         if (!activeFile) {
-          new import_obsidian3.Notice("No active note - open a note in a Wonderland folder first");
+          new import_obsidian3.Notice("No active note - open a note in an enabled folder first");
           return;
         }
         const folderSettings = this.getWonderlandSettingsFor(activeFile.path);
         if (!folderSettings) {
-          new import_obsidian3.Notice("This note is not in a Wonderland folder");
+          new import_obsidian3.Notice("This note is not in an enabled folder");
           return;
         }
         await this.generateRabbitHolesIndex(folderSettings);
       }
     });
     this.addCommand({
-      id: "make-folder-wonderland",
-      name: "Make current folder a Wonderland",
-      callback: async () => {
+      id: "enable-current-folder",
+      name: "Enable current folder",
+      callback: () => {
         const activeFile = this.app.workspace.getActiveFile();
         if (!activeFile) {
           new import_obsidian3.Notice("No active note - open a note first");
@@ -1900,25 +1897,26 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
         }
         const currentFolder = activeFile.parent;
         if (!currentFolder) {
-          new import_obsidian3.Notice("Note is at vault root - cannot make root a Wonderland");
+          new import_obsidian3.Notice("Note is at vault root - cannot enable root as a folder");
           return;
         }
         if (this.isInWonderland(activeFile.path)) {
-          new import_obsidian3.Notice(`This folder is already part of Wonderland: ${this.getWonderlandFolderFor(activeFile.path)}`);
+          new import_obsidian3.Notice(`This folder is already enabled: ${this.getWonderlandFolderFor(activeFile.path)}`);
           return;
         }
-        new NewWonderlandSetupModal(this.app, this, currentFolder.path, async (settings) => {
+        new NewWonderlandSetupModal(this.app, this, currentFolder.path, (settings) => {
           this.settings.wonderlandFolders.push(settings);
           this.settings.selectedFolderIndex = this.settings.wonderlandFolders.length - 1;
-          await this.saveSettings();
-          new import_obsidian3.Notice(`${currentFolder.path} is now a Wonderland!`);
+          this.saveSettings().then(() => {
+            new import_obsidian3.Notice(`${currentFolder.path} is now enabled!`);
+          });
         }).open();
       }
     });
     this.addCommand({
-      id: "make-root-folder-wonderland",
-      name: "Make top-level folder a Wonderland",
-      callback: async () => {
+      id: "enable-root-folder",
+      name: "Enable top-level folder",
+      callback: () => {
         const activeFile = this.app.workspace.getActiveFile();
         if (!activeFile) {
           new import_obsidian3.Notice("No active note - open a note first");
@@ -1931,14 +1929,15 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
         }
         const existingWonderland = this.settings.wonderlandFolders.find((f) => f.path === topLevelFolder);
         if (existingWonderland) {
-          new import_obsidian3.Notice(`${topLevelFolder} is already a Wonderland`);
+          new import_obsidian3.Notice(`${topLevelFolder} is already enabled`);
           return;
         }
-        new NewWonderlandSetupModal(this.app, this, topLevelFolder, async (settings) => {
+        new NewWonderlandSetupModal(this.app, this, topLevelFolder, (settings) => {
           this.settings.wonderlandFolders.push(settings);
           this.settings.selectedFolderIndex = this.settings.wonderlandFolders.length - 1;
-          await this.saveSettings();
-          new import_obsidian3.Notice(`${topLevelFolder} is now a Wonderland!`);
+          this.saveSettings().then(() => {
+            new import_obsidian3.Notice(`${topLevelFolder} is now enabled!`);
+          });
         }).open();
       }
     });
@@ -1953,7 +1952,7 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
         }
         const folderSettings = this.getWonderlandSettingsFor(activeFile.path);
         if (!folderSettings) {
-          new import_obsidian3.Notice("This note is not in a Wonderland folder");
+          new import_obsidian3.Notice("This note is not in an enabled folder");
           return;
         }
         if (!folderSettings.enrichBlacklist) {
@@ -2086,9 +2085,9 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
     this.setupAllIntervals();
     if (!this.settings.hasShownWelcome) {
       setTimeout(() => {
-        new WelcomeModal(this.app, this, async () => {
+        new WelcomeModal(this.app, this, () => {
           this.settings.hasShownWelcome = true;
-          await this.saveSettings();
+          this.saveSettings();
         }).open();
       }, 500);
     }
@@ -2143,7 +2142,7 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
   }
   openPromptModal() {
     if (this.settings.wonderlandFolders.length === 0) {
-      new import_obsidian3.Notice("Please add a Wonderland folder in settings first");
+      new import_obsidian3.Notice("Please add a folder in settings first");
       return;
     }
     new PromptModal(this.app, this, (prompt, folderPath) => {
@@ -2155,10 +2154,10 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
       return;
     const folderSettings = targetFolderPath ? this.settings.wonderlandFolders.find((f) => f.path === targetFolderPath) : this.settings.wonderlandFolders[0];
     if (!folderSettings) {
-      new import_obsidian3.Notice("No Wonderland folder configured");
+      new import_obsidian3.Notice("No folder configured");
       return;
     }
-    const notice = new import_obsidian3.Notice("Entering wonderland...", 0);
+    const notice = new import_obsidian3.Notice("Generating note...", 0);
     try {
       const existingNotes = this.getExistingNoteTitles(folderSettings.path);
       let systemPrompt = EVERGREEN_NOTE_SYSTEM_PROMPT;
@@ -2295,7 +2294,7 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
         activeFile.basename,
         relatedNotes
       );
-      const filePath = await this.getAvailableFilePath(linkText, folderSettings.path);
+      const filePath = this.getAvailableFilePath(linkText, folderSettings.path);
       await this.ensureFolderExists(folderSettings.path);
       const initialContent = await this.formatNote("*Drafting...*\n\n", folderSettings, void 0, linkText, false);
       await this.app.vault.create(filePath, initialContent);
@@ -2340,7 +2339,7 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
       return false;
     }
     const title = file.basename;
-    const notice = silent ? null : new import_obsidian3.Notice(`Enriching ${title} with Wonderland knowledge...`, 0);
+    const notice = silent ? null : new import_obsidian3.Notice(`Enriching ${title} with folder knowledge...`, 0);
     try {
       const currentContent = await this.app.vault.read(file);
       const relatedNotes = await this.getRelatedWonderlandNotes(file, folderSettings);
@@ -2348,7 +2347,7 @@ var EvergreenAIPlugin = class extends import_obsidian3.Plugin {
         if (notice)
           notice.hide();
         if (!silent)
-          new import_obsidian3.Notice("No related notes found in Wonderland to enrich from");
+          new import_obsidian3.Notice("No related notes found to enrich from");
         return false;
       }
       const relatedContext = relatedNotes.map((n) => `### ${n.title}
@@ -2469,7 +2468,7 @@ ${n.content.substring(0, 500)}...`).join("\n\n");
         if (!jsonMatch)
           throw new Error("No JSON found in response");
         organization = JSON.parse(jsonMatch[0]);
-      } catch (err) {
+      } catch (e) {
         console.error("Failed to parse organization response:", response.content);
         if (notice)
           notice.hide();
@@ -2828,7 +2827,7 @@ ${response.content}
         debugLog2(` Auto-classified note into: ${classifiedFolder}`);
       }
     }
-    const filePath = await this.getAvailableFilePath(title, targetFolder);
+    const filePath = this.getAvailableFilePath(title, targetFolder);
     await this.app.vault.create(filePath, content);
     return filePath;
   }
@@ -2939,7 +2938,7 @@ Which folder should this note go in? Respond with ONLY the folder name.`;
       this.clearAllIntervals();
       this.updateKillswitchStatusBar();
       await this.saveData(this.settings);
-      new import_obsidian3.Notice("AI killswitch ON - All AI operations stopped");
+      new import_obsidian3.Notice("AI killswitch ON - all AI operations stopped");
     }
   }
   clearAllIntervals() {
@@ -2957,10 +2956,10 @@ Which folder should this note go in? Respond with ONLY the folder name.`;
       return;
     if (this.settings.killswitchActive) {
       this.killswitchStatusBarItem.setText("AI: OFF");
-      this.killswitchStatusBarItem.style.color = "var(--text-error)";
-      this.killswitchStatusBarItem.style.fontWeight = "bold";
+      this.killswitchStatusBarItem.addClass("wonderland-killswitch-active");
     } else {
       this.killswitchStatusBarItem.setText("");
+      this.killswitchStatusBarItem.removeClass("wonderland-killswitch-active");
     }
   }
   validateSettings() {
@@ -3078,7 +3077,7 @@ var PromptModal = class extends import_obsidian3.Modal {
   }
   onOpen() {
     const { contentEl } = this;
-    contentEl.createEl("h2", { text: "Enter Wonderland" });
+    contentEl.createEl("h2", { text: "Explore a topic" });
     contentEl.createEl("p", {
       text: "What rabbit hole would you like to explore?",
       cls: "wonderland-prompt-description"
@@ -3105,12 +3104,12 @@ var PromptModal = class extends import_obsidian3.Modal {
     }
     if (currentFolderPath && !this.plugin.isInWonderland(currentFolderPath)) {
       this.folderSelect.createEl("option", {
-        text: `${currentFolderPath} (make Wonderland)`,
+        text: `${currentFolderPath} (enable)`,
         value: `__current__:${currentFolderPath}`
       });
     }
     this.folderSelect.createEl("option", {
-      text: "Create new Wonderland folder...",
+      text: "Create new folder...",
       value: "__new__"
     });
     this.newFolderContainer = folderContainer.createDiv({ cls: "wonderland-new-folder-input" });
@@ -3168,29 +3167,27 @@ var PromptModal = class extends import_obsidian3.Modal {
         return;
       }
       folderPath = newFolderName;
-      void (async () => {
-        try {
-          await this.plugin.ensureFolderExists(folderPath);
-          const newSettings = createFolderSettings(folderPath);
-          this.plugin.settings.wonderlandFolders.push(newSettings);
-          await this.plugin.saveSettings();
-          new import_obsidian3.Notice(`Created new Wonderland: ${folderPath}`);
-        } catch (err) {
-          new import_obsidian3.Notice(`Failed to create folder: ${String(err)}`);
-          return;
-        }
+      this.plugin.ensureFolderExists(folderPath).then(() => {
+        const newSettings = createFolderSettings(folderPath);
+        this.plugin.settings.wonderlandFolders.push(newSettings);
+        return this.plugin.saveSettings();
+      }).then(() => {
+        new import_obsidian3.Notice(`Created new folder: ${folderPath}`);
         this.close();
         this.onSubmit(prompt, folderPath);
-      })();
+      }).catch((err) => {
+        new import_obsidian3.Notice(`Failed to create folder: ${err instanceof Error ? err.message : String(err)}`);
+      });
       return;
     } else if (selectedValue.startsWith("__current__:")) {
       folderPath = selectedValue.replace("__current__:", "");
       this.close();
-      new NewWonderlandSetupModal(this.app, this.plugin, folderPath, async (settings) => {
+      new NewWonderlandSetupModal(this.app, this.plugin, folderPath, (settings) => {
         this.plugin.settings.wonderlandFolders.push(settings);
-        await this.plugin.saveSettings();
-        new import_obsidian3.Notice(`${folderPath} is now a Wonderland!`);
-        await this.plugin.generateNoteFromPrompt(prompt, folderPath);
+        this.plugin.saveSettings().then(() => {
+          new import_obsidian3.Notice(`${folderPath} is now enabled!`);
+          return this.plugin.generateNoteFromPrompt(prompt, folderPath);
+        });
       }).open();
       return;
     } else if (selectedValue) {
@@ -3199,7 +3196,7 @@ var PromptModal = class extends import_obsidian3.Modal {
       folderPath = (_b = this.plugin.settings.wonderlandFolders[0]) == null ? void 0 : _b.path;
     }
     if (!folderPath) {
-      new import_obsidian3.Notice("Please select or create a Wonderland folder");
+      new import_obsidian3.Notice("Please select or create a folder");
       return;
     }
     this.close();
@@ -3222,23 +3219,23 @@ var NewWonderlandSetupModal = class extends import_obsidian3.Modal {
     const { contentEl } = this;
     contentEl.createEl("h2", { text: `Setup: ${this.folderPath}` });
     contentEl.createEl("p", {
-      text: "Customize this Wonderland before creating your first note:",
+      text: "Customize this folder before creating your first note:",
       cls: "wonderland-setup-description"
     });
     const goalContainer = contentEl.createDiv({ cls: "wonderland-setup-section" });
     goalContainer.createEl("label", { text: "Folder goal:", cls: "wonderland-setup-label" });
     goalContainer.createEl("small", {
-      text: "This affects how AI generates content for this Wonderland",
+      text: "This affects how AI generates content for this folder",
       cls: "wonderland-setup-hint"
     });
     const goalSelect = goalContainer.createEl("select", { cls: "wonderland-setup-select" });
     const goals = [
-      { value: "learn", label: "Learning", desc: "Optimized for understanding and retention" },
-      { value: "action", label: "Action-oriented", desc: "Practical steps and how-to guides" },
-      { value: "reflect", label: "Critical reflection", desc: "Deep thinking and multiple perspectives" },
-      { value: "research", label: "Research", desc: "Evidence-based with citations" },
-      { value: "creative", label: "Creative", desc: "Imaginative and unconventional connections" },
-      { value: "custom", label: "Custom", desc: "Define your own focus" }
+      { value: "learn", label: "Learning", desc: "optimized for understanding and retention" },
+      { value: "action", label: "Action-oriented", desc: "practical steps and how-to guides" },
+      { value: "reflect", label: "Critical reflection", desc: "deep thinking and multiple perspectives" },
+      { value: "research", label: "Research", desc: "evidence-based with citations" },
+      { value: "creative", label: "Creative", desc: "imaginative and unconventional connections" },
+      { value: "custom", label: "Custom", desc: "define your own focus" }
     ];
     for (const goal of goals) {
       goalSelect.createEl("option", {
@@ -3246,16 +3243,18 @@ var NewWonderlandSetupModal = class extends import_obsidian3.Modal {
         value: goal.value
       });
     }
-    const customGoalContainer = goalContainer.createDiv();
-    customGoalContainer.style.display = "none";
-    customGoalContainer.style.marginTop = "0.5em";
+    const customGoalContainer = goalContainer.createDiv({ cls: "wonderland-custom-goal-container" });
     const customGoalInput = customGoalContainer.createEl("textarea", {
-      placeholder: "Describe the focus for this Wonderland...",
+      placeholder: "Describe the focus for this folder...",
       cls: "wonderland-setup-textarea"
     });
     goalSelect.addEventListener("change", () => {
       this.settings.folderGoal = goalSelect.value;
-      customGoalContainer.style.display = goalSelect.value === "custom" ? "block" : "none";
+      if (goalSelect.value === "custom") {
+        customGoalContainer.addClass("is-visible");
+      } else {
+        customGoalContainer.removeClass("is-visible");
+      }
     });
     customGoalInput.addEventListener("input", () => {
       this.settings.customGoalDescription = customGoalInput.value;
@@ -3274,19 +3273,20 @@ var NewWonderlandSetupModal = class extends import_obsidian3.Modal {
       this.settings.customInstructions = instructionsInput.value;
     });
     const togglesContainer = contentEl.createDiv({ cls: "wonderland-setup-toggles" });
-    const toggles = [
-      { key: "includeExternalLinks", label: "Include external reference links", default: false },
-      { key: "customizeSuggestions", label: 'Personalize "rabbit hole" suggestions', default: false }
-    ];
-    for (const toggle of toggles) {
-      const toggleDiv = togglesContainer.createDiv({ cls: "wonderland-setup-toggle" });
-      const checkbox = toggleDiv.createEl("input", { type: "checkbox" });
-      checkbox.checked = toggle.default;
-      toggleDiv.createEl("label", { text: toggle.label });
-      checkbox.addEventListener("change", () => {
-        this.settings[toggle.key] = checkbox.checked;
-      });
-    }
+    const extLinksDiv = togglesContainer.createDiv({ cls: "wonderland-setup-toggle" });
+    const extLinksCheckbox = extLinksDiv.createEl("input", { type: "checkbox" });
+    extLinksCheckbox.checked = false;
+    extLinksDiv.createEl("label", { text: "Include external reference links" });
+    extLinksCheckbox.addEventListener("change", () => {
+      this.settings.includeExternalLinks = extLinksCheckbox.checked;
+    });
+    const suggestDiv = togglesContainer.createDiv({ cls: "wonderland-setup-toggle" });
+    const suggestCheckbox = suggestDiv.createEl("input", { type: "checkbox" });
+    suggestCheckbox.checked = false;
+    suggestDiv.createEl("label", { text: 'Personalize "rabbit hole" suggestions' });
+    suggestCheckbox.addEventListener("change", () => {
+      this.settings.customizeSuggestions = suggestCheckbox.checked;
+    });
     const interestsContainer = contentEl.createDiv({ cls: "wonderland-setup-section" });
     interestsContainer.createEl("label", { text: "Your interests (optional):", cls: "wonderland-setup-label" });
     interestsContainer.createEl("small", {
@@ -3305,7 +3305,7 @@ var NewWonderlandSetupModal = class extends import_obsidian3.Modal {
     const cancelBtn = buttonContainer.createEl("button", { text: "Cancel" });
     cancelBtn.addEventListener("click", () => this.close());
     const createBtn = buttonContainer.createEl("button", {
-      text: "Create Wonderland",
+      text: "Create",
       cls: "mod-cta"
     });
     createBtn.addEventListener("click", () => {
@@ -3332,7 +3332,7 @@ var WelcomeModal = class extends import_obsidian3.Modal {
       cls: "wonderland-welcome-emoji"
     });
     contentEl.createEl("h1", {
-      text: "Welcome to Wonderland",
+      text: "Welcome",
       cls: "wonderland-welcome-title"
     });
     contentEl.createEl("p", {
@@ -3358,7 +3358,7 @@ var WelcomeModal = class extends import_obsidian3.Modal {
       },
       {
         emoji: "",
-        title: "Multiple wonderlands",
+        title: "Multiple folders",
         desc: "Create separate knowledge gardens for different domains"
       }
     ];
@@ -3373,8 +3373,8 @@ var WelcomeModal = class extends import_obsidian3.Modal {
     gettingStarted.createEl("h3", { text: "Quick start" });
     const steps = gettingStarted.createEl("ol");
     const stepItems = [
-      "Configure your AI provider in Settings",
-      "Add a Wonderland folder (where your notes will live)",
+      "Configure your AI provider in settings",
+      "Add a folder (where your notes will live)",
       "Click the rabbit icon or use the command palette",
       "Enter a question and start exploring!"
     ];
@@ -3385,8 +3385,7 @@ var WelcomeModal = class extends import_obsidian3.Modal {
     const settingsBtn = buttonContainer.createEl("button", { text: "Open settings" });
     settingsBtn.addEventListener("click", () => {
       this.close();
-      this.app.setting.open();
-      this.app.setting.openTabById("wonderland");
+      this.openPluginSettings();
     });
     const exploreBtn = buttonContainer.createEl("button", {
       text: "Start exploring",
@@ -3395,13 +3394,11 @@ var WelcomeModal = class extends import_obsidian3.Modal {
     exploreBtn.addEventListener("click", () => {
       this.close();
       if (this.plugin.settings.wonderlandFolders.length === 0) {
-        new import_obsidian3.Notice("Add a Wonderland folder in settings first");
-        this.app.setting.open();
-        this.app.setting.openTabById("wonderland");
+        new import_obsidian3.Notice("Add a folder in settings first");
+        this.openPluginSettings();
       } else if (!this.plugin.settings.apiKey && this.plugin.settings.aiProvider !== "ollama") {
         new import_obsidian3.Notice("Configure your API key in settings first");
-        this.app.setting.open();
-        this.app.setting.openTabById("wonderland");
+        this.openPluginSettings();
       } else {
         this.plugin.openPromptModal();
       }
@@ -3409,12 +3406,17 @@ var WelcomeModal = class extends import_obsidian3.Modal {
     const footer = contentEl.createDiv({ cls: "wonderland-welcome-footer" });
     footer.createEl("p", { text: '"Curiouser and curiouser!" - Alice', cls: "wonderland-welcome-quote" });
     const supportLink = footer.createEl("p", { cls: "wonderland-welcome-support" });
-    supportLink.createSpan({ text: "Enjoying Wonderland? " });
+    supportLink.createSpan({ text: "Enjoying the plugin? " });
     const link = supportLink.createEl("a", {
       text: "Support development",
       href: "https://ko-fi.com/donjguido"
     });
     link.setAttr("target", "_blank");
+  }
+  openPluginSettings() {
+    const appWithSettings = this.app;
+    appWithSettings.setting.open();
+    appWithSettings.setting.openTabById("wonderland");
   }
   onClose() {
     const { contentEl } = this;
