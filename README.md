@@ -61,18 +61,30 @@ Never lose track of unexplored paths:
 
 ## Installation
 
-### From Obsidian Community Plugins (Coming Soon)
+### From Obsidian Community Plugins (Under Review)
 
 1. Open Settings → Community Plugins
 2. Search for "Wonderland"
 3. Click Install, then Enable
 
-### Manual Installation
+> **Status:** Wonderland has been [submitted for review](https://github.com/obsidianmd/obsidian-releases/pull/10147) and is awaiting approval.
 
-1. Download the latest release (`main.js`, `manifest.json`, `styles.css`)
+### Manual Installation (Desktop & Mobile)
+
+1. Download the latest release files from [GitHub Releases](https://github.com/donjguido/wonderland-obsidian-plugin/releases/latest): `main.js`, `manifest.json`, `styles.css`
 2. Create a folder: `<vault>/.obsidian/plugins/wonderland/`
-3. Copy the files into that folder
+3. Copy the three files into that folder
 4. Enable the plugin in Obsidian Settings → Community Plugins
+
+#### Mobile (iOS / Android)
+
+To install manually on mobile, sync the plugin files into your vault's `.obsidian/plugins/wonderland/` folder using one of these methods:
+
+- **Obsidian Sync** — install on desktop first, and Sync will transfer the plugin to your mobile device
+- **iCloud Drive (iOS)** — place the plugin files in the vault folder via iCloud on your Mac or PC
+- **Google Drive / Dropsync (Android)** — sync your vault folder including the plugin directory
+
+> **Note:** Only cloud AI providers (OpenAI, Anthropic, custom endpoints) work on mobile. Ollama (local AI) is not supported on mobile devices.
 
 ### From Source
 
